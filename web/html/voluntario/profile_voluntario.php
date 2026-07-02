@@ -22,9 +22,8 @@ if (!$id_pessoa || $id_pessoa < 1) {
     exit();
 }
 
-// TODO: update permission logic if needed
-// require_once "../permissao/permissao.php";
-// permissao($_SESSION['id_pessoa'], 11, 7);
+require_once "../permissao/permissao.php";
+permissao($_SESSION['id_pessoa'], 13, 1);
 
 extract($_REQUEST);
 
