@@ -130,11 +130,16 @@ INSERT INTO `recurso` (`id_recurso`, `descricao`) VALUES
 ('72', 'Gateways de Pagamento'),
 ('73', 'Meios de Pagamento'),
 ('74', 'Regras de Pagamento'),
-('9', 'Configurações'),
-('91', 'Permissões'),
 ('8', 'Módulo Projetos'),
 ('81', 'Projetos - Cadastrar'),
-('82', 'Projetos - Listar');
+('82', 'Projetos - Listar'),
+('9', 'Configurações'),
+('91', 'Permissões'),
+('10',  'Módulo Agenda'),
+('101', 'Gerenciar Agenda'),
+('102', 'Gerenciar Equipe'),
+('103', 'Visualizar Agenda');
+
 
 
 INSERT INTO `modulos_visiveis` (`id_recurso`, `visivel`) VALUES
@@ -145,7 +150,8 @@ INSERT INTO `modulos_visiveis` (`id_recurso`, `visivel`) VALUES
 (5, 1),
 (6, 1),
 (7, 1),
-(8, 1);
+(8, 1),
+(10, 1);
 
 INSERT INTO `permissao` (`id_cargo`, `id_acao`, `id_recurso`) VALUES
 (1, 7, 1),
@@ -154,6 +160,7 @@ INSERT INTO `permissao` (`id_cargo`, `id_acao`, `id_recurso`) VALUES
 (1, 7, 4),
 (1, 7, 5),
 (1, 7, 6),
+(1, 7, 7),
 (1, 7, 8),
 (1, 7, 9),
 (1, 7, 11),
@@ -327,5 +334,28 @@ INSERT IGNORE INTO `wegia`.`projeto_status` (`descricao`) VALUES
 ('Inativo');
 
 INSERT IGNORE INTO `wegia`.`projeto_atendido_status` (`descricao`) VALUES
-('Ativo'), 
+('Ativo'),
+('Inativo');
+-- -----------------------------------------------------
+-- Adiciona coluna descricao em projeto_turma
+-- (instalações já existentes podem não ter a coluna criada pelo CREATE TABLE)
+-- -----------------------------------------------------
+SET @s = (SELECT IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'projeto_turma'
+       AND COLUMN_NAME = 'descricao') = 0,
+    'ALTER TABLE `projeto_turma` ADD COLUMN `descricao` VARCHAR(255) NULL AFTER `nome`',
+    'SELECT 1'
+));
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+INSERT IGNORE INTO `wegia`.`agenda_status` (`descricao`) VALUES
+('Ativo'),
+('Inativo');
+
+INSERT IGNORE INTO `wegia`.`agenda_equipe_status` (`descricao`) VALUES
+('Ativo'),
 ('Inativo');
