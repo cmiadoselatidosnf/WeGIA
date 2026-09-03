@@ -146,29 +146,30 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 							</ul>
 							<div class="tab-content">
 								<div id="overview" class="tab-pane active">
-									<form class="form-horizontal" method="post" id="formulario" onsubmit="return validar()" action="<?= WWW ?>controle/control.php" autocomplete="off">
+									<form class="form-horizontal" method="post" id="formulario" action="<?= WWW ?>controle/control.php" autocomplete="off">
 										<fieldset>
 											<div class="info-entrada">
 												<p>Atenção: Almoxarifados só serão exibidos como opção caso o usuário esteja cadastrado como almoxarife.</p>
 												<div class="form-group">
-													<label class="col-md-3 control-label" for="origens">Origem</label>
-													<a href="<?= WWW ?>html/matPat/cadastro_doador.php" id="btn-novo-doador"><i class="fas fa-plus w3-xlarge"></i></a>
+													<label class="col-md-3 control-label" for="almoxarifado">Almoxarifado</label>
+													<a href="<?= WWW ?>html/matPat/adicionar_almoxarifado.php" id="btn-novo-almoxarifado"><i class="fas fa-plus w3-xlarge"></i></a>
 													<div class="col-md-8">
-														<select class="form-control " name="origem" id="origens">
+														<select class="form-control " name="almoxarifado" id="almoxarifado">
 															<option selected disabled value="blank">Selecionar</option>
 														</select>
 													</div>
 												</div>
 
 												<div class="form-group">
-													<label class="col-md-3 control-label" for="almoxarifado">Almoxarifado</label>
-													<a href="<?= WWW ?>html/matPat/adicionar_almoxarifado.php" id="btn-novo-almoxarifado"><i class="fas fa-plus w3-xlarge"></i></a>
+													<label class="col-md-3 control-label" for="origens">Origem</label>
+													<a href="<?= WWW ?>html/matPat/cadastro_doador.php" id="btn-novo-doador"><i class="fas fa-plus w3-xlarge"></i></a>
 													<div class="col-md-6">
-														<select class="form-control " name="almoxarifado" id="almoxarifado">
+														<select class="form-control " name="origem" id="origens">
 															<option selected disabled value="blank">Selecionar</option>
 														</select>
 													</div>
 												</div>
+
 												<div class="form-group">
 													<label class="col-md-3 control-label" for="tipo_entrada">Tipo</label>
 													<a href="<?= WWW ?>html/matPat/adicionar_tipoEntrada.php" id="btn-novo-tipo-entrada"><i class="fas fa-plus w3-xlarge"></i></a>
@@ -245,7 +246,7 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 											<div class="col-md-9 col-md-offset-3">
 												<input type="hidden" name="nomeClasse" value="EntradaControle">
 												<input type="hidden" name="metodo" value="incluir">
-												<input type="submit" class="btn btn-primary" value="Registrar entrada"> 
+												<input type="submit" onclick="return validar()" class="btn btn-primary" value="Registrar entrada"> 
 											</div>
 										</div>
 									</form>
@@ -284,16 +285,30 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 				$('#tipo_entrada').append('<option value="' + item.id_tipo + '">' + item.descricao + '</option>');
 			})
 
-			$.each(origem, function(i, item) {
-				$('#origens').append('<option value="' + item.id_origem + '">' + item.nome_origem + '</option>');
-			})
-
 			let produtos_autocomplete = [];
 			let prods = [];
 
 			$('#almoxarifado').on('change', function() {
 
 				let almoxarifadoId = $(this).val();
+
+				$('#origens').empty();
+				$('#origens').append('<option selected disabled value="blank">Carregando...</option>');
+
+				$.getJSON('<?= WWW ?>controle/control.php', {
+    				nomeClasse: 'OrigemControle',
+    				metodo: 'listarPorAlmoxarifado',
+    				id_almoxarifado: almoxarifadoId
+				}, function(origens) {
+    				$('#origens').empty();
+    				$('#origens').append('<option selected disabled value="blank">Selecionar</option>');
+
+    				$.each(origens, function(i, item) {
+        				$('#origens').append(
+            				'<option value="' + item.id_origem + '">' + item.nome_origem + '</option>'
+        				);
+    				});
+				});
 
 				$.getJSON('<?= WWW ?>controle/control.php', {
 					nomeClasse: 'ProdutoControle',
@@ -367,21 +382,21 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 								return;
 							}
 
-							conta = conta + 1;
+							conta = reindexarProdutosEntrada() + 1;
 
 							$("#conta").val(conta);
 
 							var markup = "<tr class='produtoRow'><td class='prod' style='width: 160px;'><input type='text' value='" + val + "' name='id" + conta + "' readonly='readonly'></td><td class='quant'><input type='text' class='number'  id='qtd' maxlength='2' size='2' class='form-control' min='1' value='" + quantidade + "' name='qtd" + conta + "' readonly='readonly'></td><td><input type='text' class='preco' value='" + preco + "' name='valor_unitario" + conta + "'  size='2' readonly='readonly'></td><th><input type='text' size='3' id='total' class='total' value='" + quantidade * preco + "' readonly='readonly'></th><td><button type='button' class='delete-row'>remover</button></td></tr>";
 							$("table tbody ").append(markup);
-							$("#valor_unitario").empty();
-							$("#input_produtos").val("");
-							var x = $("#total_total").val();
-							x = Number(x);
-							x += (quantidade * preco);
 
-							$("#total_total").val(x);
-							verificar++;
-							$("#verifica").val(verificar);
+							reindexarProdutosEntrada();
+
+							$("#valor_unitario").val("");
+							$("#input_produtos").val("");
+							$("#quantidade").val(1);
+
+							verificar = Number($("#verifica").val() || 0);
+							conta = Number($("#conta").val() || 0);
 
 						}
 					})
@@ -402,7 +417,7 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 				xx = xx - valor_menos;
 				$("#total_total").val(xx);
 				$(this).closest('tr').remove();
-				verificar = verificar - 1;
+				reindexarProdutosEntrada();
 			});
 
 			// validar origem
@@ -441,11 +456,16 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 			var almox = document.getElementById("almoxarifado");
 			var tipo = document.getElementById("tipo_entrada");
 			var verificar = document.getElementById("verifica");
+			var origem = document.getElementById("origens");
 			var erro = false;
 
 			if (almox.value == "blank") {
 				alert("Selecione um almoxarifado");
 				almox.focus();
+				return false;
+			} else if (origem.value == "blank") {
+				alert("Selecione a origem da entrada")
+				origem.focus();
 				return false;
 			} else if (tipo.value == "blank") {
 				alert("Selecione o tipo da entrada")
@@ -492,6 +512,8 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 					return false;
 				}
 
+				reindexarProdutosEntrada();
+
 				$.ajax({
 					url: $(this).attr('action'),
 					method: 'POST',
@@ -528,6 +550,8 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 		const CHAVE = 'rascunho_cadastro_entrada';
 
 		function salvarRascunho() {
+			reindexarProdutosEntrada();
+
 			const dados = {
 				origem: $('#origens').val(),
 				almoxarifado: $('#almoxarifado').val(),
@@ -568,10 +592,45 @@ require_once ROOT . "/Functions/permissao/permissao.php";
 						$('#almoxarifado').val(dados.almoxarifado);
 					}, 100);
 				}
+
+				reindexarProdutosEntrada();
 			} catch (e) {
 				console.error('Erro ao restaurar rascunho:', e);
 			}
 		}
+
+		function reindexarProdutosEntrada() {
+			let contador = 0;
+			let totalGeral = 0;
+
+			$('#lista-produtos tr.produtoRow').each(function () {
+				contador++;
+
+				const inputProduto = $(this).find("td.prod input");
+				const inputQtd = $(this).find("td.quant input");
+				const inputPreco = $(this).find("input.preco");
+				const inputTotal = $(this).find("input.total");
+
+				inputProduto.attr('name', 'id' + contador);
+				inputQtd.attr('name', 'qtd' + contador);
+				inputPreco.attr('name', 'valor_unitario' + contador);
+
+				const qtd = Number(inputQtd.val() || 0);
+				const preco = Number(inputPreco.val() || 0);
+				const subtotal = qtd * preco;
+
+				inputTotal.val(subtotal);
+				totalGeral += subtotal;
+			});
+
+			$('#conta').val(contador);
+			$('#verifica').val(contador);
+			$('#total_total').val(totalGeral);
+
+			return contador;
+		}
+
+		window.reindexarProdutosEntrada = reindexarProdutosEntrada;
 
 		function limparRascunho() {
 			localStorage.removeItem(CHAVE);

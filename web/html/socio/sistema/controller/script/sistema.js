@@ -266,22 +266,53 @@ $(document).ready(function () {
 
 
     $("#cep").mask("99999-999");
-    function modalSimples(titulo, msg, tipo) {
-        switch (tipo) {
-            case "erro": cor = "danger"; break;
-            case "alerta": cor = "warning"; break;
-            case "sucesso": cor = "success"; break;
-            case "normal": cor = ""; break;
+function modalSimples(titulo, msg, tipo) {
+    switch (tipo) {
+        case "erro": cor = "danger"; break;
+        case "alerta": cor = "warning"; break;
+        case "sucesso": cor = "success"; break;
+        case "normal": cor = ""; break;
+    }
+    var id = "modal_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
+    var html = '<div class="modal modal-' + cor + ' fade" id="' + id + '" tabindex="-1" role="dialog" aria-hidden="true">' +
+        ' <div class="modal-dialog">' +
+        '  <div class="modal-content">' +
+        '   <div class="modal-header">' +
+        '    <h4 class="modal-title">' + titulo + '</h4>' +
+        '   </div>' +
+        '   <div class="modal-body text-center">' +
+        '    <div class="overlay"><i style="margin: 0 auto; font-size: 40px" class="fa fa-user-plus"></i></div>' +
+        '    <h3>' + msg + '</h3>' +
+        '   </div>' +
+        '   <div class="modal-footer">' +
+        '    <button type="button" class="btn btn-outline pull-left" data-dismiss="modal">Fechar</button>' +
+        '   </div>' +
+        '  </div>' +
+        ' </div>' +
+        '</div>';
+    var $modal = $(html);
+
+    $modal.on("hidden.bs.modal", function () {
+        $(this).remove();
+
+        if ($(".modal.in").length > 0) {
+            $("body").addClass("modal-open");
+        } else {
+            $("body").removeClass("modal-open").css({
+                overflow: "",
+                paddingRight: ""
+            });
+            $(".modal-backdrop").remove();
         }
-        var id = Math.floor(Math.random() * 10);
-        var html = '<div class="modal modal-' + cor + ' fade in" id="modal' + id + '" style="display: none; padding-right: 17px;"> <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h4 class="modal-title">' + titulo + '</h4> </div> <div class="modal-body text-center"><div class="overlay"> <i style="margin: 0 auto; font-size: 40px" class="fa fa-user-plus"></i> </div> <h3>' + msg + '</h3> </div> <div class="modal-footer"> <button type="button" class="btn btn-outline pull-left .btn_fecharModal' + id + '" data-dismiss="modal">Fechar</button> </div> </div> <!-- /.modal-content --> </div> <!-- /.modal-dialog --> </div>';
-        $("body").append(html);
-        $("#modal" + id).modal("toggle");
-        // if(tipo == "sucesso"){
-        //     setTimeout(function(){
-        //         location.reload();
-        //     },1000);
-        // }
+    });
+
+    $("body").append($modal);
+    $modal.modal("show");
+    // if(tipo == "sucesso"){
+    //     setTimeout(function(){
+    //         location.reload();
+    //     },1000);
+    // }
     }
     function resetaForm(form) {
         $(form).each(function () {
@@ -324,58 +355,103 @@ $(document).ready(function () {
     }
     $(document).on("submit", "#frm_novo_socio", function (e) {
         e.preventDefault();
-        var DesabilitaverificaCpf = $("#check_veri_cpf").prop("checked");
-        var socio_nome = $("#socio_nome").val();
-        var pessoa_tipo = $("#pessoa").val();
-        var contribuinte = $("#contribuinte").val();
-        var status = $("#status").val();
-        var email = $("#email").val();
-        var telefone = $("#telefone").val();
-        var cpf_cnpj = $("#cpf_cnpj").val();
-        var rua = $("#rua").val();
-        var numero = $("#numero").val();
-        var complemento = $("#complemento").val();
-        var bairro = $("#bairro").val();
-        var estado = $("#estado").val();
-        var cidade = $("#cidade").val();
-        var tags = obterTagsSelecionadas();
-        var data_nasc = $("#data_nasc").val();
-        var cep = $("#cep").val();
-        var data_referencia = $("#data_referencia").val();
-        var valor_periodo = $("#valor_periodo").val();
-        var tipo_contribuicao = $("#tipo_contribuicao").val();
-        var auto_status_contribuicoes = $("#auto_status_contribuicoes").prop("checked") ? 1 : 0;
+
+        const DesabilitaverificaCpf = $("#check_veri_cpf").prop("checked");
+
+        const socio_nome = $("#socio_nome").val();
+        const socio_sobrenome = $("#socio_sobrenome").val();
+        const pessoa_tipo = $("#pessoa").val();
+        const contribuinte = $("#contribuinte").val();
+        const status = $("#status").val();
+        const email = $("#email").val();
+        const telefone = $("#telefone").val();
+        let cpf_cnpj = $("#cpf_cnpj").val();
+        const rua = $("#rua").val();
+        const numero = $("#numero").val();
+        const complemento = $("#complemento").val();
+        const bairro = $("#bairro").val();
+        const estado = $("#estado").val();
+        const cidade = $("#cidade").val();
+        const tags = obterTagsSelecionadas();
+        const data_nasc = $("#data_nasc").val();
+        const cep = $("#cep").val();
+        const data_referencia = $("#data_referencia").val();
+        const valor_periodo = $("#valor_periodo").val();
+        const tipo_contribuicao = $("#tipo_contribuicao").val();
+        const auto_status_contribuicoes = $("#auto_status_contribuicoes").prop("checked") ? 1 : 0;
         const csrf = document.querySelector('input[name="csrf_token"]').value;
-        // Requisição POST - AJAX
-        if (valida_cpf_cnpj(cpf_cnpj)) {
-            $.post("./cadastro_socio.php", {
-                "socio_nome": socio_nome,
-                "pessoa": pessoa_tipo,
-                "contribuinte": contribuinte,
-                "status": status,
-                "email": email,
-                "tags": tags,
-                "telefone": telefone,
-                "cpf_cnpj": cpf_cnpj,
-                "rua": rua,
-                "numero": numero,
-                "complemento": complemento,
-                "bairro": bairro,
-                "estado": estado,
-                "cidade": cidade,
-                "data_nasc": data_nasc,
-                "cep": cep,
-                "data_referencia": data_referencia,
-                "valor_periodo": valor_periodo,
-                "tipo_contribuicao": tipo_contribuicao,
-                "auto_status_contribuicoes": auto_status_contribuicoes,
-                "csrf_token": csrf
-            }).done(function (resultadoCadastro) {
-                var resultado = JSON.parse(resultadoCadastro);
+
+        // ============================================
+        // Validação da data de referência
+        // ============================================
+        if (data_nasc && data_referencia) {
+            const nascimento = new Date(data_nasc + "T00:00:00");
+            const referencia = new Date(data_referencia + "T00:00:00");
+
+            if (referencia < nascimento) {
+                modalSimples(
+                    "Status",
+                    "A data de referência não pode ser anterior à data de nascimento.",
+                    "erro"
+                );
+                return;
+            }
+        }
+
+        // ============================================
+        // Validação do CPF/CNPJ
+        // ============================================
+        if (!DesabilitaverificaCpf && !valida_cpf_cnpj(cpf_cnpj)) {
+            modalSimples(
+                "Status",
+                "O CPF/CNPJ informado é inválido!",
+                "erro"
+            );
+            return;
+        }
+
+        // Quando a validação do documento estiver desabilitada,
+        // envia null caso o campo esteja vazio.
+        if (DesabilitaverificaCpf && !cpf_cnpj) {
+            cpf_cnpj = null;
+        }
+
+        // ============================================
+        // Requisição AJAX
+        // ============================================
+        $.post("./cadastro_socio.php", {
+            socio_nome,
+            socio_sobrenome,
+            pessoa: pessoa_tipo,
+            contribuinte,
+            status,
+            email,
+            tags,
+            telefone,
+            cpf_cnpj,
+            verificar_documento: !DesabilitaverificaCpf,
+            rua,
+            numero,
+            complemento,
+            bairro,
+            estado,
+            cidade,
+            data_nasc,
+            cep,
+            data_referencia,
+            valor_periodo,
+            tipo_contribuicao,
+            auto_status_contribuicoes,
+            csrf_token: csrf
+        })
+            .done(function (resultadoCadastro) {
+                const resultado = JSON.parse(resultadoCadastro);
+
                 if (resultado) {
                     $(".socioModal").append(
-                        '<div class="overlay"> <i style="font-size: 72px; color: green;" class="fa fa-refresh fa-spin"></i> </div>'
+                        '<div class="overlay"><i style="font-size:72px;color:green;" class="fa fa-refresh fa-spin"></i></div>'
                     );
+
                     setTimeout(function () {
                         $("#adicionarSocioModal").modal("toggle");
                         $(".socioModal .overlay").remove();
@@ -383,175 +459,140 @@ $(document).ready(function () {
                         resetaForm("#frm_novo_socio");
                     }, 1000);
                 }
-            }).fail(function (resposta) {
+            })
+            .fail(function (resposta) {
                 console.log(resposta);
-                resposta = JSON.parse(resposta.responseText)
-                modalSimples("Status", `Erro ao cadastrar sócio, ${resposta.erro}.`, "erro");
+
+                resposta = JSON.parse(resposta.responseText);
+
+                modalSimples(
+                    "Status",
+                    `Erro ao cadastrar sócio, ${resposta.erro}.`,
+                    "erro"
+                );
             });
-        } else {
-            if (DesabilitaverificaCpf == true) {
+    });
 
-                //adicionar verificação se cpf_cnpj está preenchido
-                if (!cpf_cnpj) {
-                    //gerar número de cpf_cnpj aleatório
-                    cpf_cnpj = '';
-                    for (let i = 0; i < 14; i++) {
-                        cpf_cnpj += Math.floor(Math.random() * 9).toString();
-                    }
-                    console.log('O documento é: ' + cpf_cnpj);
-                }
+    $(document).on("submit", "#frm_editar_socio", function (e) {
+        e.preventDefault();
 
-                $.post("./cadastro_socio.php", {
-                    "socio_nome": socio_nome,
-                    "pessoa": pessoa_tipo,
-                    "contribuinte": contribuinte,
-                    "status": status,
-                    "email": email,
-                    "tags": tags,
-                    "telefone": telefone,
-                    "cpf_cnpj": cpf_cnpj,
-                    "rua": rua,
-                    "numero": numero,
-                    "complemento": complemento,
-                    "bairro": bairro,
-                    "estado": estado,
-                    "cidade": cidade,
-                    "data_nasc": data_nasc,
-                    "cep": cep,
-                    "data_referencia": data_referencia,
-                    "valor_periodo": valor_periodo,
-                    "tipo_contribuicao": tipo_contribuicao,
-                    "auto_status_contribuicoes": auto_status_contribuicoes,
-                    "csrf_token": csrf
-                }).done(function (resultadoCadastro) {
-                    var resultado = JSON.parse(resultadoCadastro);
-                    if (resultado) {
-                        $(".socioModal").append(
-                            '<div class="overlay"> <i style="font-size: 72px; color: green;" class="fa fa-refresh fa-spin"></i> </div>'
-                        );
-                        setTimeout(function () {
-                            $("#adicionarSocioModal").modal("toggle");
-                            $(".socioModal .overlay").remove();
-                            $("#qtd_socios").html(Number($("#qtd_socios").html()) + 1);
-                            resetaForm("#frm_novo_socio");
-                        }, 1000);
-                    }
-                }).fail(function (resposta) {
-                    console.log(resposta);
-                    resposta = JSON.parse(resposta.responseText)
-                    modalSimples("Status", `Erro ao cadastrar sócio, ${resposta.erro}.`, "erro");
-                });
-            } else {
-                modalSimples("Status", "O CPF/CNPJ informado é inválido!", "erro");
+        const DesabilitaverificaCpf = $("#check_veri_cpf").prop("checked");
+
+        const id_socio = $("#id_socio").val();
+        const socio_nome = $("#socio_nome").val();
+        const socio_sobrenome = $("#socio_sobrenome").val();
+        const pessoa_tipo = $("#pessoa").val();
+        const contribuinte = $("#contribuinte").val();
+        const status = $("#status").val();
+        const email = $("#email").val();
+        const telefone = $("#telefone").val();
+        let cpf_cnpj = $("#cpf_cnpj").val();
+        const rua = $("#rua").val();
+        const numero = $("#numero").val();
+        const complemento = $("#complemento").val();
+        const bairro = $("#bairro").val();
+        const tags = obterTagsSelecionadas();
+        const estado = $("#estado").val();
+        const cidade = $("#cidade").val();
+        const data_nasc = $("#data_nasc").val();
+        const cep = $("#cep").val();
+        const data_referencia = $("#data_referencia").val();
+        const valor_periodo = $("#valor_periodo").val();
+        const tipo_contribuicao = $("#tipo_contribuicao").val();
+        const auto_status_contribuicoes = $("#auto_status_contribuicoes").prop("checked") ? 1 : 0;
+
+        // ============================================
+        // Validação da data de referência
+        // ============================================
+        if (data_nasc && data_referencia) {
+            const nascimento = new Date(data_nasc + "T00:00:00");
+            const referencia = new Date(data_referencia + "T00:00:00");
+
+            if (referencia < nascimento) {
+                modalSimples(
+                    "Status",
+                    "A data de referência não pode ser anterior à data de nascimento.",
+                    "erro"
+                );
+                return;
             }
         }
 
-    });
-    $(document).on("submit", "#frm_editar_socio", function (e) {
-        e.preventDefault();
-        var DesabilitaverificaCpf = $("#check_veri_cpf").prop("checked");
-        var id_socio = $("#id_socio").val();
-        var socio_nome = $("#socio_nome").val();
-        var pessoa_tipo = $("#pessoa").val();
-        var contribuinte = $("#contribuinte").val();
-        var status = $("#status").val();
-        var email = $("#email").val();
-        var telefone = $("#telefone").val();
-        var cpf_cnpj = $("#cpf_cnpj").val();
-        var rua = $("#rua").val();
-        var numero = $("#numero").val();
-        var complemento = $("#complemento").val();
-        var bairro = $("#bairro").val();
-        var tags = obterTagsSelecionadas();
-        var estado = $("#estado").val();
-        var cidade = $("#cidade").val();
-        var data_nasc = $("#data_nasc").val();
-        var cep = $("#cep").val();
-        var data_referencia = $("#data_referencia").val();
-        var valor_periodo = $("#valor_periodo").val();
-        var tipo_contribuicao = $("#tipo_contribuicao").val();
-        var auto_status_contribuicoes = $("#auto_status_contribuicoes").prop("checked") ? 1 : 0;
-        // Requisição POST - AJAX
-        if (valida_cpf_cnpj(cpf_cnpj)) {
-            $.post("./processa_edicao_socio.php", {
-                "id_socio": id_socio,
-                "socio_nome": socio_nome,
-                "pessoa": pessoa_tipo,
-                "contribuinte": contribuinte,
-                "status": status,
-                "email": email,
-                "telefone": telefone,
-                "cpf_cnpj": cpf_cnpj,
-                "rua": rua,
-                "tags": tags,
-                "numero": numero,
-                "complemento": complemento,
-                "bairro": bairro,
-                "estado": estado,
-                "cidade": cidade,
-                "data_nasc": data_nasc,
-                "cep": cep,
-                "data_referencia": data_referencia,
-                "valor_periodo": valor_periodo,
-                "tipo_contribuicao": tipo_contribuicao,
-                "auto_status_contribuicoes": auto_status_contribuicoes
-            }).done(function (resultadoCadastro) {
-                var resultado = JSON.parse(resultadoCadastro);
+        // ============================================
+        // Validação do CPF/CNPJ
+        // ============================================
+        if (!DesabilitaverificaCpf && !valida_cpf_cnpj(cpf_cnpj)) {
+            modalSimples(
+                "Status",
+                "O CPF/CNPJ informado é inválido!",
+                "erro"
+            );
+            return;
+        }
+
+        // Quando a validação do documento estiver desabilitada,
+        // envia null caso o campo esteja vazio.
+        if (DesabilitaverificaCpf && !cpf_cnpj) {
+            cpf_cnpj = null;
+        }
+
+        // ============================================
+        // Requisição AJAX
+        // ============================================
+        $.post("./processa_edicao_socio.php", {
+            id_socio,
+            socio_nome,
+            socio_sobrenome,
+            pessoa: pessoa_tipo,
+            contribuinte,
+            status,
+            email,
+            telefone,
+            cpf_cnpj,
+            verificar_documento: !DesabilitaverificaCpf,
+            rua,
+            tags,
+            numero,
+            complemento,
+            bairro,
+            estado,
+            cidade,
+            data_nasc,
+            cep,
+            data_referencia,
+            valor_periodo,
+            tipo_contribuicao,
+            auto_status_contribuicoes
+        })
+            .done(function (resultadoCadastro) {
+                const resultado = JSON.parse(resultadoCadastro);
+
                 if (resultado) {
                     $(".socioModal").append(
-                        '<div class="overlay"> <i style="font-size: 72px; color: green;" class="fa fa-refresh fa-spin"></i> </div>'
+                        '<div class="overlay"><i style="font-size:72px;color:green;" class="fa fa-refresh fa-spin"></i></div>'
                     );
+
                     setTimeout(function () {
                         resetaForm("#frm_editar_socio");
                         window.location.replace("./");
                     }, 1000);
                 } else {
-                    modalSimples("Status", "Erro ao editar sócio, verifique os dados e tente novamente.", "erro");
+                    modalSimples(
+                        "Status",
+                        "Erro ao editar sócio, verifique os dados e tente novamente.",
+                        "erro"
+                    );
                 }
-            });
-        } else {
-            if (DesabilitaverificaCpf == true) {
-                $.post("./processa_edicao_socio.php", {
-                    "id_socio": id_socio,
-                    "socio_nome": socio_nome,
-                    "pessoa": pessoa_tipo,
-                    "contribuinte": contribuinte,
-                    "status": status,
-                    "email": email,
-                    "telefone": telefone,
-                    "cpf_cnpj": cpf_cnpj,
-                    "rua": rua,
-                    "tags": tags,
-                    "numero": numero,
-                    "complemento": complemento,
-                    "bairro": bairro,
-                    "estado": estado,
-                    "cidade": cidade,
-                    "data_nasc": data_nasc,
-                    "cep": cep,
-                    "data_referencia": data_referencia,
-                    "valor_periodo": valor_periodo,
-                    "tipo_contribuicao": tipo_contribuicao,
-                    "auto_status_contribuicoes": auto_status_contribuicoes
-                }).done(function (resultadoCadastro) {
-                    var resultado = JSON.parse(resultadoCadastro);
-                    if (resultado) {
-                        $(".socioModal").append(
-                            '<div class="overlay"> <i style="font-size: 72px; color: green;" class="fa fa-refresh fa-spin"></i> </div>'
-                        );
-                        setTimeout(function () {
-                            resetaForm("#frm_editar_socio");
-                            window.location.replace("./");
-                        }, 1000);
-                    } else {
-                        modalSimples("Status", "Erro ao editar sócio, verifique os dados e tente novamente.", "erro");
-                    }
-                });
-            } else {
-                modalSimples("Status", "O CPF/CNPJ informado é inválido!", "erro");
-            }
-        }
+            })
+            .fail(function (resposta) {
+                console.log(resposta);
 
+                modalSimples(
+                    "Status",
+                    "Erro ao editar sócio, tente novamente mais tarde.",
+                    "erro"
+                );
+            });
     });
 
     $(document).on("submit", "#frm_nova_cobranca", function (e) {
@@ -703,29 +744,29 @@ $(document).ready(function () {
     // Configuração tabela sócios
     // Filtro customizado para desconsiderar caracteres antes do termo de busca
     $.fn.dataTable.ext.afnFiltering.push(
-        function(settings, data, dataIndex) {
+        function (settings, data, dataIndex) {
             // Aplica apenas à tabela #example
             if (settings.nTable.id !== 'example') {
                 return true;
             }
-            
+
             var searchTerm = settings.oPreviousSearch.sSearch.toLowerCase();
-            
+
             // Se não há termo de busca, retorna true (mostra a linha)
             if (!searchTerm) {
                 return true;
             }
-            
+
             // Procura em todas as colunas
             for (var i = 0; i < data.length; i++) {
                 var cellData = data[i].toLowerCase();
                 // Verifica se começa com o termo de busca ou aparece após espaço
-                if (cellData.indexOf(searchTerm) === 0 || 
+                if (cellData.indexOf(searchTerm) === 0 ||
                     cellData.indexOf(' ' + searchTerm) >= 0) {
                     return true;
                 }
             }
-            
+
             return false;
         }
     );
@@ -852,6 +893,7 @@ $(document).ready(function () {
     });
 
     // Tabela contribuições
+    //Ajustar sobrenome
     $(document).ready(function () {
         $('#tabela-contribuicoes').DataTable({
             "processing": true,
@@ -859,27 +901,33 @@ $(document).ready(function () {
             "ajax": "../../contribuicao/controller/control.php?nomeClasse=ContribuicaoLogController&metodo=getContribuicoesLogJSON",
             "columns": [
                 { "data": "codigo" },
-                { "data": "nomeSocio" },
+                {
+                    "data": "nomeSocio" + " " + "sobrenomeSocio", "render": function (data, type, row) {
+                        return row.nomeSocio + (row.sobrenomeSocio != null ? " " + row.sobrenomeSocio : "");
+                    }
+                },
                 { "data": "plataforma" },
                 {
                     "data": "meio", "render": function (data, type, row) {
-                        switch(data){
-            case 'Carne' : 
-                return 'Carnê';
-                break;
-            case 'Recorrencia' :
-                return 'Recorrência';
-                break;
-            default:
-                return data;
-        }
-                        return data == 'Carne' ? "Carnê" : data;
+                        switch (data) {
+                            case 'Carne':
+                                return 'Carnê';
+                                break;
+                            case 'Recorrencia':
+                                return 'Recorrência';
+                                break;
+                            case 'CartaoCredito':
+                                return 'Cartão de crédito';
+                                break;
+                            default:
+                                return data;
+                        }
                     }
                 },
                 { "data": "dataGeracao", "render": (data, type) => { return formataDataBr(data, type) } },
                 { "data": "dataVencimento", "render": (data, type) => { return formataDataBr(data, type) } },
                 { "data": "dataPagamento", "render": (data, type) => { return formataDataBr(data, type) } },
-                { "data": "valor" },
+                { "data": "valor", "render": (data, type) => { return parseFloat(data).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) } },
                 {
                     "data": "status", "render": function (data, type, row) {
                         return data == 1 ? "Pago" : "Pendente";

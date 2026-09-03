@@ -132,7 +132,7 @@ class FuncionarioDAO
 
     public function incluir($funcionario, $cpf)
     {
-        $sql = 'call cadfuncionario(:nome,:sobrenome,:cpf,:senha,:sexo,:telefone,:data_nascimento,:imagem,:cep,:estado,:cidade,:bairro,:logradouro,:numero_endereco,:complemento,:ibge,:registro_geral,:orgao_emissor,:data_expedicao,:nome_pai,:nome_mae,:tipo_sangue,:data_admissao,:pis,:ctps,:uf_ctps,:numero_titulo,:zona,:secao,:certificado_reservista_numero,:certificado_reservista_serie,:id_situacao,:id_cargo)';
+        $sql = 'call cadfuncionario(:nome,:sobrenome,:cpf,:senha,:sexo,:email,:telefone,:data_nascimento,:imagem,:cep,:estado,:cidade,:bairro,:logradouro,:numero_endereco,:complemento,:ibge,:registro_geral,:orgao_emissor,:data_expedicao,:nome_pai,:nome_mae,:tipo_sangue,:data_admissao,:pis,:ctps,:uf_ctps,:numero_titulo,:zona,:secao,:certificado_reservista_numero,:certificado_reservista_serie,:id_situacao,:id_cargo)';
 
         $sql = str_replace("'", "\'", $sql);
 
@@ -141,6 +141,7 @@ class FuncionarioDAO
         $sobrenome = $funcionario->getSobrenome();
         $senha = $funcionario->getSenha();
         $sexo = $funcionario->getSexo();
+        $email = $funcionario->getEmail();
         $telefone = $funcionario->getTelefone();
         $nascimento = $funcionario->getDataNascimento();
         $imagem = $funcionario->getImagem();
@@ -182,6 +183,7 @@ class FuncionarioDAO
         $stmt->bindParam(':cpf', $cpf);
         $stmt->bindParam(':senha', $senha);
         $stmt->bindParam(':sexo', $sexo);
+        $stmt->bindParam(':email', $email);
         $stmt->bindParam(':telefone', $telefone);
         $stmt->bindParam(':data_nascimento', $nascimento);
         $stmt->bindParam(':imagem', $imagem);
@@ -249,6 +251,7 @@ class FuncionarioDAO
         $sobrenome = $funcionario->getSobrenome();
         $cpf = $funcionario->getCpf();
         $sexo = $funcionario->getSexo();
+        $email = $funcionario->getEmail();
         $telefone = $funcionario->getTelefone();
         $nascimento = $funcionario->getDataNascimento();
         $imagem = $funcionario->getImagem();
@@ -305,16 +308,26 @@ class FuncionarioDAO
         $stmt->execute();
     }
 
+    // reativar
+    public function reativar($id_funcionario)
+    {
+        $sql = 'UPDATE funcionario SET id_situacao = 1 WHERE id_funcionario = :id_funcionario';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindParam(':id_funcionario', $id_funcionario, PDO::PARAM_INT);
+        $stmt->execute();
+    }
+
     // Editar
     public function alterarInfPessoal($funcionario)
     {
-        $sql = 'update pessoa as p inner join funcionario as f on p.id_pessoa=f.id_pessoa set nome=:nome,sobrenome=:sobrenome,sexo=:sexo,telefone=:telefone,data_nascimento=:data_nascimento,nome_pai=:nome_pai,nome_mae=:nome_mae,tipo_sanguineo=:tipo_sanguineo,cns=:cns where id_funcionario=:id_funcionario';
+        $sql = 'update pessoa as p inner join funcionario as f on p.id_pessoa=f.id_pessoa set nome=:nome,sobrenome=:sobrenome,sexo=:sexo,email=:email,telefone=:telefone,data_nascimento=:data_nascimento,nome_pai=:nome_pai,nome_mae=:nome_mae,tipo_sanguineo=:tipo_sanguineo,cns=:cns where id_funcionario=:id_funcionario';
 
         $stmt = $this->pdo->prepare($sql);
         $nome = $funcionario->getNome();
         $sobrenome = $funcionario->getSobrenome();
         $id_funcionario = $funcionario->getId_funcionario();
         $sexo = $funcionario->getSexo();
+        $email = $funcionario->getEmail();
         $telefone = $funcionario->getTelefone();
         $nascimento = $funcionario->getDataNascimento();
         $nomePai = $funcionario->getNomePai();
@@ -326,6 +339,7 @@ class FuncionarioDAO
         $stmt->bindParam(':sobrenome', $sobrenome);
         $stmt->bindParam(':id_funcionario', $id_funcionario);
         $stmt->bindParam(':sexo', $sexo);
+        $stmt->bindParam(':email', $email);        
         $stmt->bindParam(':telefone', $telefone);
         $stmt->bindParam(':data_nascimento', $nascimento);
         $stmt->bindParam(':nome_pai', $nomePai);
@@ -530,7 +544,7 @@ class FuncionarioDAO
     //Consultar um utilizando o id
     public function listar($id_funcionario)
     {
-        $sql = "SELECT p.imagem,p.nome,p.sobrenome,p.cpf,p.senha,p.sexo,p.telefone,p.data_nascimento,p.cep,p.ibge,p.estado,p.cidade,p.bairro,p.logradouro,p.numero_endereco,p.complemento,p.ibge,p.registro_geral,p.orgao_emissor,p.data_expedicao,p.nome_pai,p.nome_mae,p.tipo_sanguineo,p.cns,f.id_funcionario,f.data_admissao,f.pis,f.ctps,f.uf_ctps,f.numero_titulo,f.zona,f.secao,f.certificado_reservista_numero,f.certificado_reservista_serie,s.id_situacao,s.situacoes,c.id_cargo,c.cargo,qh.escala,qh.tipo,qh.carga_horaria,qh.entrada1,qh.saida1,qh.entrada2,qh.saida2,qh.total,qh.dias_trabalhados,qh.folga
+        $sql = "SELECT p.imagem,p.nome,p.sobrenome,p.cpf,p.sexo,p.email,p.telefone,p.data_nascimento,p.cep,p.ibge,p.estado,p.cidade,p.bairro,p.logradouro,p.numero_endereco,p.complemento,p.ibge,p.registro_geral,p.orgao_emissor,p.data_expedicao,p.nome_pai,p.nome_mae,p.tipo_sanguineo,p.cns,f.id_funcionario,f.data_admissao,f.pis,f.ctps,f.uf_ctps,f.numero_titulo,f.zona,f.secao,f.certificado_reservista_numero,f.certificado_reservista_serie,s.id_situacao,s.situacoes,c.id_cargo,c.cargo,qh.escala,qh.tipo,qh.carga_horaria,qh.entrada1,qh.saida1,qh.entrada2,qh.saida2,qh.total,qh.dias_trabalhados,qh.folga
             FROM pessoa p 
             INNER JOIN funcionario f ON p.id_pessoa = f.id_pessoa 
             LEFT JOIN quadro_horario_funcionario qh ON qh.id_funcionario = f.id_funcionario 
@@ -545,7 +559,7 @@ class FuncionarioDAO
         $funcionario = array();
 
         while ($linha = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $funcionario[] = array('imagem' => $linha['imagem'], 'cpf' => $linha['cpf'], 'nome' => $linha['nome'], 'sobrenome' => $linha['sobrenome'], 'sexo' => $linha['sexo'], 'data_nascimento' => $this->formatoDataDMY($linha['data_nascimento']), 'registro_geral' => $linha['registro_geral'], 'orgao_emissor' => $linha['orgao_emissor'], 'data_expedicao' => $this->formatoDataDMY($linha['data_expedicao']), 'nome_mae' => $linha['nome_mae'], 'nome_pai' => $linha['nome_pai'], 'tipo_sanguineo' => $linha['tipo_sanguineo'], 'cns' => $linha['cns'], 'senha' => $linha['senha'], 'telefone' => $linha['telefone'], 'cep' => $linha['cep'], 'estado' => $linha['estado'], 'ibge' => $linha['ibge'], 'cidade' => $linha['cidade'], 'bairro' => $linha['bairro'], 'logradouro' => $linha['logradouro'], 'numero_endereco' => $linha['numero_endereco'], 'complemento' => $linha['complemento'], 'id_funcionario' => $linha['id_funcionario'], 'data_admissao' => $this->formatoDataDMY($linha['data_admissao']), 'pis' => $linha['pis'], 'ctps' => $linha['ctps'], 'uf_ctps' => $linha['uf_ctps'], 'numero_titulo' => $linha['numero_titulo'], 'zona' => $linha['zona'], 'secao' => $linha['secao'], 'certificado_reservista_numero' => $linha['certificado_reservista_numero'], 'certificado_reservista_serie' => $linha['certificado_reservista_serie'], 'id_situacao' => $linha['id_situacao'], 'situacao' => $linha['situacao'], 'escala' => $linha['escala'], 'tipo' => $linha['tipo'], 'carga_horaria' => $linha['carga_horaria'], 'entrada1' => $linha['entrada1'], 'saida1' => $linha['saida1'], 'entrada2' => $linha['entrada2'], 'saida2' => $linha['saida2'], 'total' => $linha['total'], 'dias_trabalhados' => $linha['dias_trabalhados'], 'folga' => $linha['folga'], 'id_cargo' => $linha['id_cargo'], 'cargo' => $linha['cargo']);
+            $funcionario[] = array('imagem' => $linha['imagem'], 'cpf' => $linha['cpf'], 'nome' => $linha['nome'], 'sobrenome' => $linha['sobrenome'], 'sexo' => $linha['sexo'], 'data_nascimento' => $this->formatoDataDMY($linha['data_nascimento']), 'registro_geral' => $linha['registro_geral'], 'orgao_emissor' => $linha['orgao_emissor'], 'data_expedicao' => $this->formatoDataDMY($linha['data_expedicao']), 'nome_mae' => $linha['nome_mae'], 'nome_pai' => $linha['nome_pai'], 'tipo_sanguineo' => $linha['tipo_sanguineo'], 'cns' => $linha['cns'], 'email' => $linha['email'], 'telefone' => $linha['telefone'], 'cep' => $linha['cep'], 'estado' => $linha['estado'], 'ibge' => $linha['ibge'], 'cidade' => $linha['cidade'], 'bairro' => $linha['bairro'], 'logradouro' => $linha['logradouro'], 'numero_endereco' => $linha['numero_endereco'], 'complemento' => $linha['complemento'], 'id_funcionario' => $linha['id_funcionario'], 'data_admissao' => $this->formatoDataDMY($linha['data_admissao']), 'pis' => $linha['pis'], 'ctps' => $linha['ctps'], 'uf_ctps' => $linha['uf_ctps'], 'numero_titulo' => $linha['numero_titulo'], 'zona' => $linha['zona'], 'secao' => $linha['secao'], 'certificado_reservista_numero' => $linha['certificado_reservista_numero'], 'certificado_reservista_serie' => $linha['certificado_reservista_serie'], 'id_situacao' => $linha['id_situacao'], 'situacao' => $linha['situacao'], 'escala' => $linha['escala'], 'tipo' => $linha['tipo'], 'carga_horaria' => $linha['carga_horaria'], 'entrada1' => $linha['entrada1'], 'saida1' => $linha['saida1'], 'entrada2' => $linha['entrada2'], 'saida2' => $linha['saida2'], 'total' => $linha['total'], 'dias_trabalhados' => $linha['dias_trabalhados'], 'folga' => $linha['folga'], 'id_cargo' => $linha['id_cargo'], 'cargo' => $linha['cargo']);
         }
 
         return $funcionario;
@@ -554,14 +568,14 @@ class FuncionarioDAO
     public function listarPessoaExistente($cpf)
     {
         try {
-            $sql = "SELECT id_pessoa,nome,sobrenome,sexo,telefone,data_nascimento,cpf,imagem,registro_geral,orgao_emissor,data_expedicao FROM `pessoa` WHERE cpf = :cpf";
+            $sql = "SELECT id_pessoa,nome,sobrenome,sexo,email,telefone,data_nascimento,cpf,imagem,registro_geral,orgao_emissor,data_expedicao FROM `pessoa` WHERE cpf = :cpf";
             $stmt = $this->pdo->prepare($sql);
             $stmt->bindParam(':cpf', $cpf);
             $stmt->execute();
             $funcionario = array();
 
             while ($linha = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $funcionario[] = array('imagem' => $linha['imagem'], 'id_pessoa' => $linha['id_pessoa'], 'cpf' => $linha['cpf'], 'nome' => $linha['nome'], 'sobrenome' => $linha['sobrenome'], 'sexo' => $linha['sexo'], 'data_nascimento' => $this->formatoDataDMY($linha['data_nascimento']), 'registro_geral' => $linha['registro_geral'], 'orgao_emissor' => $linha['orgao_emissor'], 'data_expedicao' => $this->formatoDataDMY($linha['data_expedicao']), 'telefone' => $linha['telefone']);
+                $funcionario[] = array('imagem' => $linha['imagem'], 'id_pessoa' => $linha['id_pessoa'], 'cpf' => $linha['cpf'], 'nome' => $linha['nome'], 'sobrenome' => $linha['sobrenome'], 'sexo' => $linha['sexo'], 'data_nascimento' => $this->formatoDataDMY($linha['data_nascimento']), 'registro_geral' => $linha['registro_geral'], 'orgao_emissor' => $linha['orgao_emissor'], 'data_expedicao' => $this->formatoDataDMY($linha['data_expedicao']), 'email' => $linha['email'], 'telefone' => $linha['telefone']);
             }
         } catch (PDOException $e) {
             echo 'Error: ' .  $e->getMessage();
@@ -595,5 +609,43 @@ class FuncionarioDAO
         $stmt->execute();
 
         return $stmt->fetch(PDO::FETCH_ASSOC)['senha'];
+    }
+
+    public function listarPessoasComCargo($situacao)
+    {
+        $pessoas = array();
+
+        $sql = "
+            SELECT f.id_funcionario, p.nome, p.sobrenome, p.cpf, c.cargo, s.situacoes 
+            FROM pessoa p 
+            JOIN funcionario f ON p.id_pessoa = f.id_pessoa 
+            JOIN cargo c ON c.id_cargo = f.id_cargo 
+            JOIN situacao s ON f.id_situacao = s.id_situacao 
+            WHERE s.id_situacao = :situacao
+            UNION
+            SELECT v.id_voluntario as id_funcionario, p.nome, p.sobrenome, p.cpf, c.cargo, s.situacoes 
+            FROM pessoa p 
+            JOIN voluntario v ON p.id_pessoa = v.id_pessoa 
+            JOIN cargo c ON c.id_cargo = v.id_cargo 
+            JOIN situacao s ON v.id_situacao = s.id_situacao 
+            WHERE s.id_situacao = :situacao
+        ";
+
+        $consulta = $this->pdo->prepare($sql);
+        $consulta->bindParam(':situacao', $situacao);
+        $consulta->execute();
+
+        while ($linha = $consulta->fetch(PDO::FETCH_ASSOC)) {
+            $pessoas[] = array(
+                'id_funcionario' => htmlspecialchars($linha['id_funcionario']), 
+                'cpf' => htmlspecialchars($linha['cpf']), 
+                'nome' => htmlspecialchars($linha['nome']), 
+                'sobrenome' => htmlspecialchars($linha['sobrenome']), 
+                'situacao' => htmlspecialchars($linha['situacoes']), 
+                'cargo' => htmlspecialchars($linha['cargo'])
+            );
+        }
+
+        return $pessoas;
     }
 }

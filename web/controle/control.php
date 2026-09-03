@@ -16,6 +16,7 @@ function processaRequisicao($nomeClasse, $metodo, $modulo = null)
         //Controladoras permitidas
         $controladorasRecursos = [
             'AdocaoControle' => [6, 64],
+            'AgendaControle' => [10, 101, 102, 103, 5],
             'AlergiaControle' => [5],
             'AlmoxarifadoControle' => [2, 21, 22, 23, 24, 91],
             'AlmoxarifeControle' => [91],
@@ -53,7 +54,8 @@ function processaRequisicao($nomeClasse, $metodo, $modulo = null)
             'OrigemControle' => [23],
             'PaArquivoControle' => [1, 12, 14],
             'PaStatusControle' => [12, 14],
-            'PessoaArquivoControle' => [1, 11, 12],
+            'PessoaArquivoControle' => [1, 11, 12, 13],
+            'PessoaControle' => [1, 4, 11, 12, 13],
             'ProdutoControle' => [22, 23, 24],
             'ProcessoAceitacaoControle' => [1, 12, 14],
             'ProjetoControle' => [8, 81, 82],
@@ -70,12 +72,12 @@ function processaRequisicao($nomeClasse, $metodo, $modulo = null)
             'UnidadeControle' => [22],
             'MemorandoControle' => [3],
             'DespachoControle' => [3],
-            'VoluntarioControle' => [11],
+            'VoluntarioControle' => [13],
             'NotificacaoControle' => [2, 5, 21, 22, 23, 24]
         ];
 
         /*Por padrão o control.php irá recusar qualquer controladora informada,
-		adicione as controladoras que serão permitidas a lista branca $controladorasRecursos*/
+        adicione as controladoras que serão permitidas a lista branca $controladorasRecursos*/
         if (!array_key_exists($nomeClasse, $controladorasRecursos))
             throw new InvalidArgumentException('Controladora inválida', 400);
 
@@ -142,7 +144,22 @@ try {
         $metodo = filter_var($_REQUEST['metodo'], FILTER_SANITIZE_SPECIAL_CHARS) ?? null;
         isset($_REQUEST['modulo']) ? $modulo = filter_var($_REQUEST['modulo'], FILTER_SANITIZE_SPECIAL_CHARS) : $modulo = null;
     }
-
+    if ($modulo) {
+        // Rejeita stream wrappers (phar://, file://, etc)
+        if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $modulo)) {
+            throw new Exception('Stream wrappers não são permitidos.', 400);
+        }
+        
+        // Rejeita path traversal (../ ou ..\)
+        if (preg_match('#\\.\\.' . preg_quote(DIRECTORY_SEPARATOR) . '#', $modulo)) {
+            throw new Exception('Path traversal não é permitido.', 400);
+        }
+        
+        // Rejeita caminhos absolutos
+        if (preg_match('#^[/\\\\]#', $modulo)) {
+            throw new Exception('Caminho absoluto não é permitido.', 400);
+        }
+    }
     processaRequisicao($nomeClasse, $metodo, $modulo);
 } catch (Exception $e) {
     $codigo = $e->getCode() >= 400 && $e->getCode() < 600 ? intval($e->getCode()) : 500;
@@ -158,7 +175,7 @@ try {
         require_once dirname(__FILE__, 2) . DIRECTORY_SEPARATOR . 'classes' . DIRECTORY_SEPARATOR . 'Util.php';
         require_once dirname(__FILE__, 2) . DIRECTORY_SEPARATOR . 'config.php';
 
-        if ($e->getCode() === 401){
+        if ($e->getCode() === 401) {
             header("Location: " . WWW . "html/home.php?msg_c=" . urlencode("Você não tem as permissões necessárias para essa página."));
             exit();
         }

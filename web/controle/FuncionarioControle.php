@@ -379,13 +379,15 @@ class FuncionarioControle
         }
 
         if ((!isset($cargo)) || (empty($cargo))) {
-            http_response_code(412);
-            header('Location: ../html/funcionario.html?msg=Cargo do funcionario não informado. Por favor, informe um cargo!');
-            exit();
+            throw new InvalidArgumentException('Cargo do funcionário não informado. Por favor, informe um cargo.', 412);
+        }
+
+        if ((!isset($email)) || (empty($email))) { 
+            $email = '';
         }
 
         if ((!isset($telefone)) || (empty($telefone))) {
-            $telefone = 'null';
+            $telefone = '';
         }
 
         if ((!isset($nascimento)) || (empty($nascimento))) {
@@ -489,9 +491,7 @@ class FuncionarioControle
         }
 
         if ((!isset($situacao)) || (empty($situacao))) {
-            http_response_code(412);
-            header('Location: ../html/funcionario.html?msg=Situação do funcionario não informada. Por favor, informe a situação!');
-            exit();
+            throw new InvalidArgumentException('Situação do funcionário não informada. Por favor, informe a situação.', 412);
         }
 
         if ((!isset($certificado_reservista_numero)) || (empty($certificado_reservista_numero))) {
@@ -523,16 +523,25 @@ class FuncionarioControle
         }
 
 
-        if ((!isset($_SESSION['imagem'])) || (empty($_SESSION['imagem']))) {
+        $imagemBase64 = filter_input(INPUT_POST, 'imagem_base64', FILTER_UNSAFE_RAW);
+        if (!empty($imagemBase64)) {
+            if (preg_match('#^data:image/[^;]+;base64,#i', $imagemBase64)) {
+                $imagemBase64 = preg_replace('#^data:image/[^;]+;base64,#i', '', $imagemBase64);
+            }
+
+            $imgperfil = base64_encode(base64_decode($imagemBase64, true) ?: '');
+            if ($imgperfil === '') {
+                $imgperfil = '';
+            }
+        } elseif ((!isset($_SESSION['imagem'])) || (empty($_SESSION['imagem']))) {
             $imgperfil = '';
-        }
-        else {
+        } else {
             $imgperfil = base64_encode($_SESSION['imagem']);
             unset($_SESSION['imagem']);
         }
 
         $senha = '';
-        $funcionario = new Funcionario($cpf, $nome, $sobrenome, $gender, $nascimento, $rg, $orgao_emissor, $data_expedicao, $nome_mae, $nome_pai, $sangue, $senha, $telefone, $imgperfil, $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
+        $funcionario = new Funcionario($cpf, $nome, $sobrenome, $gender, $nascimento, $rg, $orgao_emissor, $data_expedicao, $nome_mae, $nome_pai, $sangue, $senha,$email, $telefone, $imgperfil, $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
         $funcionario->setData_admissao($data_admissao);
         $funcionario->setPis($pis);
         $funcionario->setCtps($ctps);
@@ -566,6 +575,9 @@ class FuncionarioControle
         if ((!isset($cargo)) || (empty($cargo))) {
             $msg .= "Cargo do funcionario não informado. Por favor, informe um cargo!";
             header('Location: ../html/funcionario.html?msg=' . $msg);
+        }
+        if ((!isset($email)) || (empty($email))) {
+            $email = '';
         }
         if ((!isset($telefone)) || (empty($telefone))) {
             $telefone = 'null';
@@ -667,7 +679,7 @@ class FuncionarioControle
         }
 
         $senha = '';
-        $funcionario = $funcionario = new Funcionario($cpf, $nome, $sobrenome, $gender, $nascimento, $rg, $orgao_emissor, $data_expedicao, $nome_mae, $nome_pai, $sangue, $senha, $telefone, $imgperfil, $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
+        $funcionario = $funcionario = new Funcionario($cpf, $nome, $sobrenome, $gender, $nascimento, $rg, $orgao_emissor, $data_expedicao, $nome_mae, $nome_pai, $sangue, $senha, $email, $telefone, $imgperfil, $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
         $funcionario->setData_admissao($data_admissao);
         $funcionario->setPis($pis);
         $funcionario->setCtps($ctps);
@@ -683,40 +695,88 @@ class FuncionarioControle
         return $funcionario;
     }
 
-    public function verificarSenha()
-    {
+   public function verificarSenha($nova_senha, $confirmar_senha, $id_pessoa, $senha_antiga) {
         try {
-            extract($_REQUEST);
-            if ($nova_senha != $confirmar_senha) {
-                return 1;
+            if (empty($nova_senha) || empty($confirmar_senha) || empty($senha_antiga)) {
+                return 1; // campos obrigatórios ausentes
             }
-            else {
-                $funcionarioDAO = new FuncionarioDAO();
-                $senha = $funcionarioDAO->getSenhaByIdPessoa((int) $id_pessoa);
-                $passwordCheck = LoginHelper::verifyAndMigrate($senha_antiga, $senha);
 
-                if (!$passwordCheck['valid']) {
-                    return 2;
-                }
-
-                if ($passwordCheck['updated_hash'] !== null) {
-                    $funcionarioDAO->alterarSenha((int) $id_pessoa, $passwordCheck['updated_hash']);
-                }
+            if ($nova_senha !== $confirmar_senha) {
+                return 2; // nova senha e confirmação não conferem
             }
-            return 3;
-        }
-        catch (Exception $e) {
-            Util::tratarException($e);
+
+            $funcionarioDAO = new FuncionarioDAO();
+            $senha_armazenada = $funcionarioDAO->getSenhaByIdPessoa((int) $id_pessoa);
+
+            // Verifica se a NOVA senha é igual à senha atual (não pode repetir)
+            $checkIgual = LoginHelper::verifyAndMigrate($nova_senha, $senha_armazenada);
+            if ($checkIgual['valid']) {
+                return 4; // nova senha igual à atual — bloqueado
+            }
+
+            // Verifica se a senha ATUAL informada realmente bate com o hash salvo
+            $checkAtual = LoginHelper::verifyAndMigrate($senha_antiga, $senha_armazenada);
+            if (!$checkAtual['valid']) {
+                return 3; // senha atual informada está incorreta
+            }
+
+            $minLength = 8;
+            $regex = "/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{" . $minLength . ",}$/";
+
+            if (!preg_match($regex, $nova_senha)) {
+                throw new InvalidArgumentException(
+                    'A senha informada não atende aos requisitos mínimos estabelecidos.',
+                    412
+                );
+            }
+
+            
+
+            $hashNovaSenha = LoginHelper::hashPassword($nova_senha);
+            $funcionarioDAO->alterarSenha((int) $id_pessoa, $hashNovaSenha);
+
+            return 5; // sucesso
+        } catch (InvalidArgumentException $e) {
+            throw $e;
         }
     }
-    public function verificarSenhaConfig()
-    {
-        extract($_REQUEST);
-        if ($nova_senha != $confirmar_senha) {
-            return 1;
-        }
-        else {
-            return 3;
+    public function verificarSenhaConfig($nova_senha, $confirmar_senha, $id_pessoa){
+        try {
+            if (empty($nova_senha) || empty($confirmar_senha)) {
+                return 1; // campos obrigatórios ausentes
+            }
+
+            if ($nova_senha !== $confirmar_senha) {
+                return 2; // nova senha e confirmação não conferem
+            }
+
+            $minLength = 8;
+            $regex = "/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{" . $minLength . ",}$/";
+
+            if (!preg_match($regex, $nova_senha)) {
+                throw new InvalidArgumentException(
+                    'A senha informada não atende aos requisitos mínimos estabelecidos.',
+                    412
+                );
+            }
+
+            $funcionarioDAO = new FuncionarioDAO();
+            $senha_armazenada = $funcionarioDAO->getSenhaByIdPessoa((int) $id_pessoa);
+
+            // Impede definir a mesma senha que já está cadastrada (se houver uma)
+            if ($senha_armazenada !== null) {
+                $check = LoginHelper::verifyAndMigrate($nova_senha, $senha_armazenada);
+                if ($check['valid']) {
+                    return 4; // nova senha igual à atual — bloqueado
+                }
+            }
+
+            $hashNovaSenha = LoginHelper::hashPassword($nova_senha);
+            $funcionarioDAO->alterarSenha((int) $id_pessoa, $hashNovaSenha);
+
+            return 4; // sucesso
+        } catch (InvalidArgumentException $e) {
+            throw $e;
         }
     }
 
@@ -790,7 +850,6 @@ class FuncionarioControle
             Util::tratarException($e);
         }
     }
-
     public function getIdFuncionarioComIdPessoa()
     {
         try {
@@ -802,7 +861,36 @@ class FuncionarioControle
 
             $funcionarioDAO = new FuncionarioDAO;
             $id_funcionario = $funcionarioDAO->getIdFuncionarioComIdPessoa($id_pessoa);
+
             echo json_encode($id_funcionario);
+        }
+        catch (Exception $e) {
+            Util::tratarException($e);
+        }
+    }
+
+    public function listarPessoasComCargo()
+    {
+        try {
+            extract($_REQUEST);
+
+            isset($_GET['select_situacao']) === false ? $situacao_selecionada = 1 : $situacao_selecionada = $_GET['select_situacao'];
+
+            $funcionariosDAO = new FuncionarioDAO();
+            $pessoas = $funcionariosDAO->listarPessoasComCargo($situacao_selecionada);
+
+            $_SESSION['pessoas_com_cargo'] = json_encode($pessoas);
+
+            $whitePages = [
+                '../html/geral/cadastrar_permissoes.php',
+            ];
+
+            if (count($whitePages) == 1) {
+                header('Location: ' . $whitePages[0]);
+            }
+            else {
+                isset($nextPage) && in_array($nextPage, $whitePages) ? header('Location: ' . $nextPage) : header('Location: ' . WWW . 'html/home.php');
+            }
         }
         catch (Exception $e) {
             Util::tratarException($e);
@@ -812,6 +900,9 @@ class FuncionarioControle
     public function adicionarPermissao()
     {
         try {
+            require_once ROOT . '/html/permissao/permissao.php';
+            permissao($_SESSION['id_pessoa'], 91, 7);
+
             //adicionar csrf
             $cargo = filter_input(INPUT_POST, 'cargo', FILTER_SANITIZE_NUMBER_INT);
             $acao = filter_input(INPUT_POST, 'acao', FILTER_SANITIZE_NUMBER_INT);
@@ -906,6 +997,9 @@ class FuncionarioControle
     public function excluirPermissao()
     {
         try {
+            require_once ROOT . '/html/permissao/permissao.php';
+            permissao($_SESSION['id_pessoa'], 91, 7);
+
             $cargo = filter_input(INPUT_POST, 'cargo', FILTER_SANITIZE_NUMBER_INT);
             $recurso = filter_input(INPUT_POST, 'recurso', FILTER_SANITIZE_NUMBER_INT);
 
@@ -935,6 +1029,9 @@ class FuncionarioControle
     public function alterarPermissao()
     {
         try {
+            require_once ROOT . '/html/permissao/permissao.php';
+            permissao($_SESSION['id_pessoa'], 91, 7);
+
             $cargo = filter_input(INPUT_POST, 'cargo', FILTER_SANITIZE_NUMBER_INT);
             $acao = filter_input(INPUT_POST, 'acao', FILTER_SANITIZE_NUMBER_INT);
             $recurso = filter_input(INPUT_POST, 'recurso', FILTER_SANITIZE_NUMBER_INT);
@@ -1000,10 +1097,12 @@ class FuncionarioControle
 
     public function incluir()
     {
+        $cpf = filter_input(INPUT_POST, 'cpf', FILTER_SANITIZE_SPECIAL_CHARS);
+
         try {
             $funcionario = $this->verificarFuncionario();
             $horario = $this->verificarHorario();
-            $cpf = filter_input(INPUT_POST, 'cpf', FILTER_SANITIZE_SPECIAL_CHARS);
+            
 
             if (!Csrf::validateToken($_POST['csrf_token']))
                 throw new InvalidArgumentException('O Token CSRF informado é inválido.', 403);
@@ -1047,6 +1146,10 @@ class FuncionarioControle
                 $fieldErrors['data_admissao'] = $message;
             } elseif (stripos($message, 'nascimento') !== false) {
                 $fieldErrors['nascimento'] = $message;
+            } elseif (stripos($message, 'cargo') !== false) {
+                $fieldErrors['cargo'] = $message;
+            } elseif (stripos($message, 'situação') !== false) {
+                $fieldErrors['situacao'] = $message;
             } else {
                 $fieldErrors['global'] = $message;
             }
@@ -1056,6 +1159,7 @@ class FuncionarioControle
             exit();
         }
         catch (PDOException $e) {
+            error_log("Erro ao cadastrar funcionário existente: " . $e->getFile() . ":" . $e->getLine() . " - " . $e->getMessage());
             $message = $e->getCode() == 23000 ? 'CPF já cadastrado no sistema.' : 'Erro ao cadastrar funcionário.';
             setSessionFormData($_POST);
             setSessionFormErrorFromMessage($message, 'global');
@@ -1114,6 +1218,7 @@ class FuncionarioControle
             exit();
         }
         catch (PDOException $e) {
+            error_log("Erro ao cadastrar funcionário existente: " . $e->getFile() . ":" . $e->getLine() . " - " . $e->getMessage());
             $message = $e->getCode() == 23000 ? 'CPF já cadastrado no sistema.' : 'Erro ao cadastrar funcionário.';
             setSessionFormData($_POST);
             setSessionFormErrorFromMessage($message, 'global');
@@ -1183,7 +1288,7 @@ class FuncionarioControle
             $funcionario = new Funcionario(
                 '', $nome, $sobrenome, $gender, $nascimentoFinal, '', '', '',
                 $nome_mae ?? '', $nome_pai ?? '', $sangue ?? '', '',
-                $telefone, '', '', '', '', '', '', '', '', '', ''
+                $email ?? '', $telefone, '', '', '', '', '', '', '', '', ''
                 );
             $funcionario->setId_funcionario($id_funcionario);
             $funcionario->setCns($cns !== '' ? $cns : null);
@@ -1207,58 +1312,81 @@ class FuncionarioControle
 
 
 
-    /**
-     * Altera a chave de acesso ao sistema de determinado usuário, permite que administradores configurados possam alterar a senha de outras pessoas
-     */
     public function alterarSenha()
     {
-        $id_pessoa = filter_input(INPUT_POST, 'id_pessoa', FILTER_SANITIZE_NUMBER_INT);
-        $nova_senha = filter_input(INPUT_POST, 'nova_senha');
-        $redir = filter_input(INPUT_POST, 'redir', FILTER_SANITIZE_SPECIAL_CHARS);
+        $id_pessoa       = filter_input(INPUT_POST, 'id_pessoa', FILTER_VALIDATE_INT);
+        $nova_senha      = filter_input(INPUT_POST, 'nova_senha');
+        $confirmar_senha = filter_input(INPUT_POST, 'confirmar_senha');
+        $senha_antiga    = filter_input(INPUT_POST, 'senha_antiga');
+        $redir           = filter_input(INPUT_POST, 'redir', FILTER_SANITIZE_SPECIAL_CHARS);
 
         try {
-            if (!Csrf::validateToken($_POST['csrf_token']))
+            if (!Csrf::validateToken($_POST['csrf_token'] ?? '')) {
                 throw new InvalidArgumentException('O Token CSRF informado é inválido.', 403);
+            }
 
-            if (!$id_pessoa || $id_pessoa < 1)
+            if ($id_pessoa === false || $id_pessoa === null || $id_pessoa < 1) {
                 throw new InvalidArgumentException('O id da pessoa informado não é válido.', 400);
+            }
+
+            if (!isset($_SESSION['id_pessoa'])) {
+                throw new LogicException('Sessão inválida ou expirada.', 401);
+            }
+
+            if ($nova_senha === null || $confirmar_senha === null) {
+                throw new InvalidArgumentException('Os campos de senha são obrigatórios.', 400);
+            }
 
             $funcionarioDAO = new FuncionarioDAO();
 
-            if ($id_pessoa != $_SESSION['id_pessoa'] && !$funcionarioDAO->verificaAdm($_SESSION['id_pessoa']))
+            if ($id_pessoa != $_SESSION['id_pessoa'] && !$funcionarioDAO->verificaAdm($_SESSION['id_pessoa'])) {
                 throw new LogicException('Operação negada: O usuário logado não é o mesmo de que se deseja alterar a senha', 401);
-
-            $minLength = 8;
-            $regex = "/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{" . $minLength . ",}$/";
-
-            if (!preg_match($regex, $nova_senha))
-                throw new InvalidArgumentException('A senha informada não atende aos requisitos mínimos estabelecidos.', 412);
-
-            $nova_senha = LoginHelper::hashPassword($nova_senha);
-            if (isset($redir)) {
-                $page = $redir;
-                $verificacao = $this->verificarSenhaConfig();
             }
-            else {
-                $verificacao = $this->verificarSenha();
-                $page = "alterar_senha.php";
-            }
-            if ($verificacao == 1 || $verificacao == 2) {
-                header("Location: " . WWW . 'html/' . htmlspecialchars($page) . '?verificacao=' . htmlspecialchars($verificacao));
+
+            $isConfigAdm = false;
+
+            if($id_pessoa == $_SESSION['id_pessoa'] && $funcionarioDAO->verificaAdm($_SESSION['id_pessoa']) && "geral/configurar_senhas.php" === $redir) {
+                header("Location: " . WWW . "html/geral/configurar_senhas.php?verificacao=6");
                 exit();
             }
-            else {
-                $funcionarioDAO->alterarSenha($id_pessoa, $nova_senha);
 
-                $conexao = mysqli_connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
-                $resultado = mysqli_query($conexao, "UPDATE pessoa set adm_configurado=1 where cpf='admin'");
-                $resultado = mysqli_query($conexao, "SELECT original from selecao_paragrafo where id_selecao = 1");
-                $registro = mysqli_fetch_array($resultado);
+            // --- Fluxo: usuário trocando a própria senha ---
+            if ($id_pessoa == $_SESSION['id_pessoa']) {
 
-                $registro['original'] == 1 ? header("Location: " . WWW . 'html/' . htmlspecialchars($page) . '?verificacao=' . htmlspecialchars($verificacao) . "&redir_config=true") : header("Location: " . WWW . 'html/' . htmlspecialchars($page) . '.php?verificacao=' . htmlspecialchars($verificacao));
+                if ($senha_antiga === null || $senha_antiga === '') {
+                    throw new InvalidArgumentException('A senha atual é obrigatória.', 400);
+                }
+
+                $page        = "logout.php";
+                $verificacao = $this->verificarSenha($nova_senha, $confirmar_senha, $id_pessoa, $senha_antiga);
+                $sucesso     = 5;
+
             }
-        }
-        catch (Exception $e) {
+            // --- Fluxo: admin configurando senha de outro usuário ---
+            elseif ($redir === "geral/configurar_senhas.php" && $funcionarioDAO->verificaAdm($_SESSION['id_pessoa'])) {
+
+                $isConfigAdm = true;
+                $page        = $redir;
+                $verificacao = $this->verificarSenhaConfig($nova_senha, $confirmar_senha, $id_pessoa);
+                $sucesso     = 4;
+
+            }
+            else {
+                throw new LogicException('Rota de alteração de senha não reconhecida para este usuário.', 400);
+            }
+
+            // Monta a URL de redirecionamento
+            $url = WWW . 'html/' . htmlspecialchars($page) . '?verificacao=' . htmlspecialchars($verificacao);
+
+            // Só o fluxo de admin usa o parâmetro extra, e só em caso de sucesso
+            if ($isConfigAdm && $verificacao == $sucesso) {
+                $url .= '&redir_config=true';
+            }
+
+            header("Location: " . $url);
+            exit();
+
+        } catch (Exception $e) {
             Util::tratarException($e);
         }
     }
@@ -1312,7 +1440,7 @@ public function alterarOutros()
                 }
             }
 
-            $funcionario = new Funcionario('', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '');
+            $funcionario = new Funcionario('', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '');
             $funcionario->setId_funcionario($id_funcionario);
             $funcionario->setId_cargo($cargo);
             $funcionario->setPis($pis);
@@ -1407,7 +1535,7 @@ public function alterarOutros()
 
             $formatar = new Util();
 
-            if ($_SESSION['data_nasc']) {
+            if ($_SESSION['data_nasc']) { 
                 if (strtotime($data_expedicao) < strtotime($formatar->formatoDataYMD($_SESSION['data_nasc']))) {
                     echo 'A data de expedição é anterior à do nascimento. Por favor, informe uma data válida!';
                     header("Location: ../html/funcionario/profile_funcionario.php?&id_funcionario=" . urlencode($id_funcionario));
@@ -1416,7 +1544,7 @@ public function alterarOutros()
                 unset($_SESSION['data_nasc']);
             }
 
-            $funcionario = new Funcionario('', '', '', '', '', $rg, $orgao_emissor, $data_expedicao, '', '', '', '', '', '', '', '', '', '', '', '', '', '');
+            $funcionario = new Funcionario('', '', '', '', '', $rg, $orgao_emissor, $data_expedicao, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '');
 
             $funcionario->setId_funcionario($id_funcionario);
 
@@ -1424,6 +1552,12 @@ public function alterarOutros()
 
             $funcionarioDAO->alterarDocumentacao($funcionario);
             header("Location: ../html/funcionario/profile_funcionario.php?id_funcionario=" . urlencode($id_funcionario));
+        }
+        catch (InvalidArgumentException $e) {
+            $_SESSION['msg'] = $e->getMessage();
+            $_SESSION['tipo'] = "error";
+            header("Location: ../html/funcionario/profile_funcionario.php?id_funcionario=" . urlencode($_REQUEST['id_funcionario']));
+            exit;
         }
         catch (Exception $e) {
             Util::tratarException($e);
@@ -1482,7 +1616,7 @@ public function alterarOutros()
             if (strlen($ibge) != 0 && strlen(preg_replace('/\D/', '', $ibge)) != 7)
                 throw new InvalidArgumentException('O tamanho do código do IBGE informado não está correto.', 412);
 
-            $funcionario = new Funcionario('', '', '', '', '', '', '', '', '', '', '', '', '', '', $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
+            $funcionario = new Funcionario('', '', '', '', '', '', '', '', '', '', '', '', '', '', '', $cep, $uf, $cidade, $bairro, $rua, $numero_residencia, $complemento, $ibge);
             $funcionario->setId_funcionario($id_funcionario);
             $funcionarioDAO = new FuncionarioDAO();
 
@@ -1561,6 +1695,24 @@ public function alterarOutros()
             header("Location:../controle/control.php?metodo=listarTodos&nomeClasse=FuncionarioControle&nextPage=../html/funcionario/informacao_funcionario.php");
         }
         catch (Exception $e) {
+            Util::tratarException($e);
+        }
+    }
+
+    public function reativar()
+    {
+        try {
+            $idFuncionario = filter_input(INPUT_POST, 'id_funcionario', FILTER_SANITIZE_NUMBER_INT);
+            
+            if (!Csrf::validateToken($_POST['csrf_token']))
+                throw new InvalidArgumentException('Token inválido.', 403);
+
+            $funcionarioDAO = new FuncionarioDAO();
+            $funcionarioDAO->reativar($idFuncionario);
+
+            header("Location: ../html/funcionario/profile_funcionario.php?id_funcionario=" . urlencode($idFuncionario));
+            exit();
+        } catch (Exception $e) {
             Util::tratarException($e);
         }
     }

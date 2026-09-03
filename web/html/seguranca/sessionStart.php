@@ -78,6 +78,32 @@ if (file_exists($config_path)) {
     }
     require_once($config_path);
 }
-if (isset($_COOKIE['PHPSESSID'])) {
-    header("Set-Cookie: PHPSESSID=" . $_COOKIE["PHPSESSID"] . "; expires=" . (time() + 3600 * 0) . ";path=/; domain=" . DB_HOST . ";SameSite=Strict;HttpOnly=On;Secure");
-}
+session_set_cookie_params([
+    'lifetime' => 1800,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
+session_start();
+
+require_once dirname(__FILE__, 3) . "/dao/Conexao.php";
+
+if (isset($_SESSION['id_pessoa'])) {
+    try {
+        $pdo = Conexao::connect();
+        
+        $stmt = $pdo->prepare("SELECT id_situacao FROM funcionario WHERE id_pessoa = :id_pessoa");
+        $stmt->bindValue(':id_pessoa', $_SESSION['id_pessoa'], PDO::PARAM_INT);
+        $stmt->execute();
+        $situacao = $stmt->fetchColumn();
+
+        if ($situacao !== false && (int)$situacao === 2) {
+            session_destroy();
+            header("Location: " . WWW . "index.php?erro=acesso_revogado");
+            exit;
+        }
+    } catch (Exception $e) {
+        error_log("Erro na verificação de segurança da sessão: " . $e->getMessage());
+    }
+} 

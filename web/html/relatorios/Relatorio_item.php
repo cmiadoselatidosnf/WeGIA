@@ -17,10 +17,11 @@ class Item
     private $mostrarZerado;
     private $DDL_cmd;
     private $tipoMedia;
+    private $modoRequisicao;
 
     // Constructor
 
-    public function __construct($relat, $o_d, $t, $resp, $p, $a, $z = false, $tipoMedia = 'dia')
+    public function __construct($relat, $o_d, $t, $resp, $p, $a, $z = false, $tipoMedia = 'dia', $modoRequisicao = 'movimentados')
     {
         $this
             ->setRelatorio($relat)
@@ -32,6 +33,7 @@ class Item
             ->setAlmoxarifado($a)
             ->setMostrarZerado($z)
             ->setTipoMedia($tipoMedia)
+            ->setModoRequisicao($modoRequisicao)
         ;
     }
 
@@ -60,7 +62,7 @@ class Item
     private function entrada()
     {
         if ($this->hasValue()) {
-            $params = "WHERE ientrada.qtd > 0 AND ientrada.oculto=false AND almoxarifado.ativo = 1";
+            $params = "WHERE ientrada.qtd > 0 AND ientrada.oculto = false AND entrada.ativo = 1 AND almoxarifado.ativo = 1 AND produto.ativo = 1";
             $cont = 2;
 
             if ($this->getOrigem()) {
@@ -139,7 +141,7 @@ class Item
                 LEFT JOIN tipo_entrada ON tipo_entrada.id_tipo = entrada.id_tipo
                 LEFT JOIN almoxarifado ON almoxarifado.id_almoxarifado = entrada.id_almoxarifado
                 LEFT JOIN unidade ON unidade.id_unidade = produto.id_unidade
-                WHERE ientrada.qtd > 0 AND ientrada.oculto = false AND almoxarifado.ativo = 1
+                WHERE ientrada.qtd > 0 AND ientrada.oculto = false AND entrada.ativo = 1 AND almoxarifado.ativo = 1 AND produto.ativo = 1
                 GROUP BY 
                 ientrada.id_produto,
                 ientrada.valor_unitario,
@@ -154,7 +156,7 @@ class Item
     private function saida()
     {
         if ($this->hasValue()) {
-            $params = "WHERE isaida.qtd > 0 AND isaida.oculto = false AND almoxarifado.ativo = 1";
+            $params = "WHERE isaida.qtd > 0 AND isaida.oculto = false AND saida.ativo = 1 AND almoxarifado.ativo = 1 AND produto.ativo = 1";
             $cont = 2;
 
             if ($this->getDestino()) {
@@ -205,13 +207,13 @@ class Item
 
             switch ($tipoMedia) {
                 case 'mes':
-                    $divisor = "TIMESTAMPDIFF(MONTH, $inicio, $fim)";
+                     $divisor = "GREATEST(ROUND((TIMESTAMPDIFF(DAY, $inicio, $fim) + 1) / 30), 1)";
                     break;
                 case 'ano':
-                    $divisor = "TIMESTAMPDIFF(YEAR, $inicio, $fim)";
+                    $divisor = "GREATEST(ROUND((TIMESTAMPDIFF(DAY, $inicio, $fim) + 1) / 365), 1)";
                     break;
                 case 'dia':
-                    $divisor = "TIMESTAMPDIFF(DAY, $inicio, $fim) + 1";
+                    $divisor = "GREATEST(TIMESTAMPDIFF(DAY, $inicio, $fim), 1)";
                     break;
             }
  
@@ -259,7 +261,7 @@ class Item
                 LEFT JOIN tipo_saida ON tipo_saida.id_tipo = saida.id_tipo
                 LEFT JOIN almoxarifado ON almoxarifado.id_almoxarifado = saida.id_almoxarifado
                 LEFT JOIN unidade ON unidade.id_unidade = produto.id_unidade
-                WHERE isaida.qtd > 0 AND isaida.oculto = false AND almoxarifado.ativo = 1
+                WHERE isaida.qtd > 0 AND isaida.oculto = false AND saida.ativo = 1 AND almoxarifado.ativo = 1 AND produto.ativo = 1
                 GROUP BY
                 isaida.id_produto,
                 isaida.valor_unitario,
@@ -273,107 +275,101 @@ class Item
     private function estoque()
     {
         if ($this->hasValue()) {
-            $params = "WHERE oculto = false AND ativo = 1 ";
+            $params = "WHERE e.oculto = false AND e.ativo = 1 AND e.produto_ativo = 1";
             $cont = 1;
 
-            if ($this->getAlmoxarifado()) {
-                $params = $this->param($params, $cont) . " id_almoxarifado = :idAlmoxarifado ";
-                $this->paramsExternos[':idAlmoxarifado'] = $this->getAlmoxarifado();
-                $cont++;
+            if (!$this->getMostrarZerado()) {
+	            $params = $this->param($params, $cont) . " e.qtd != 0 ";
+	            $cont++;
             }
 
-            $showZero = !!$this->getMostrarZerado();
+            if ($this->getAlmoxarifado()) {
+	            $params = $this->param($params, $cont) . " e.id_almoxarifado = :idAlmoxarifado ";
+	            $this->paramsExternos[':idAlmoxarifado'] = $this->getAlmoxarifado();
+	            $cont++;
+            }
 
-            $table1 = [
-                // Caso 0: não mostrar zerados
-                "CREATE TEMPORARY TABLE IF NOT EXISTS tabela_produto_entrada 
-                SELECT produto.id_produto, produto.preco, SUM(ientrada.qtd) as somatorio, produto.descricao, unidade.descricao_unidade as unidade, SUM(ientrada.qtd * ientrada.valor_unitario) as Total, 
-                concat(ientrada.id_produto, valor_unitario) as kungfu 
-                FROM ientrada
-                INNER JOIN produto ON produto.id_produto = ientrada.id_produto
-                INNER JOIN unidade ON unidade.id_unidade = produto.id_unidade
-                LEFT JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
-                LEFT JOIN tipo_entrada ON tipo_entrada.id_tipo = entrada.id_tipo
-                WHERE ientrada.id_produto = produto.id_produto
-                GROUP BY kungfu 
-                ORDER BY produto.descricao;
-                ",
-
-                // Caso 1: mostrar zerados
-                "CREATE TEMPORARY TABLE IF NOT EXISTS tabela_produto_entrada 
-                SELECT produto.id_produto, produto.descricao, produto.preco, IFNULL(SUM(ientrada.qtd), 0) as somatorio, IFNULL(SUM(ientrada.qtd * ientrada.valor_unitario), 0) as Total, 
-                concat(produto.id_produto, IFNULL(ientrada.valor_unitario, 0)) as kungfu 
-                FROM produto 
-                LEFT JOIN ientrada ON ientrada.id_produto = produto.id_produto 
-                LEFT JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
-                LEFT JOIN tipo_entrada ON tipo_entrada.id_tipo = entrada.id_tipo
-                LEFT JOIN unidade ON unidade.id_unidade = produto.id_unidade
-                GROUP BY kungfu 
-                ORDER BY produto.descricao;
-                "
-            ];
+            if ($this->getTipo()) {
+	            $params = $this->param($params, $cont) . " e.id_categoria_produto = :idCategoriaProduto ";
+	            $this->paramsExternos[':idCategoriaProduto'] = $this->getTipo();
+	            $cont++;
+            }
 
             // DDL com tabelas temporárias
             $this->setDDL_cmd(
-                $table1[(int)$showZero] .
                     "CREATE TEMPORARY TABLE IF NOT EXISTS tabela_entradas AS
-                SELECT 
-                    ientrada.id_produto,
-                    entrada.id_almoxarifado,
-                    SUM(ientrada.qtd) AS qtd_entrada,
-                    SUM(ientrada.qtd * ientrada.valor_unitario) AS valor_entrada
-                FROM ientrada
-                INNER JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
-                GROUP BY ientrada.id_produto, entrada.id_almoxarifado;
+                    SELECT 
+                        ientrada.id_produto,
+                        entrada.id_almoxarifado,
+                        SUM(ientrada.qtd) AS qtd_entrada,
+                        SUM(ientrada.qtd * ientrada.valor_unitario) AS valor_entrada
+                    FROM ientrada
+                    INNER JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
+                    WHERE entrada.ativo = 1
+                        AND ientrada.oculto = false
+                    GROUP BY ientrada.id_produto, entrada.id_almoxarifado;
 
-                CREATE TEMPORARY TABLE IF NOT EXISTS tabela_saidas AS
-                SELECT 
-                    isaida.id_produto,
-                    saida.id_almoxarifado,
-                    SUM(isaida.qtd) AS qtd_saida,
-                    SUM(isaida.qtd * isaida.valor_unitario) AS valor_saida
-                FROM isaida
-                INNER JOIN saida ON saida.id_saida = isaida.id_saida
-                GROUP BY isaida.id_produto, saida.id_almoxarifado;
+                    CREATE TEMPORARY TABLE IF NOT EXISTS tabela_saidas AS
+                    SELECT 
+                        isaida.id_produto,
+                        saida.id_almoxarifado,
+                        SUM(isaida.qtd) AS qtd_saida,
+                        SUM(isaida.qtd * isaida.valor_unitario) AS valor_saida
+                    FROM isaida
+                    INNER JOIN saida ON saida.id_saida = isaida.id_saida
+                    WHERE saida.ativo = 1
+                        AND isaida.oculto = false
+                    GROUP BY isaida.id_produto, saida.id_almoxarifado;
 
-                CREATE TEMPORARY TABLE IF NOT EXISTS estoque_com_preco_atualizado AS
-                SELECT
-                    p.id_produto,
-                    p.descricao,
-                    u.descricao_unidade AS unidade,
-                    a.id_almoxarifado,
-                    IFNULL(te.qtd_entrada, 0) - IFNULL(ts.qtd_saida, 0) AS qtd,
-                    CASE
-                        WHEN (IFNULL(te.qtd_entrada, 0) - IFNULL(ts.qtd_saida, 0)) <= 0 THEN 0
-                        ELSE IFNULL(te.valor_entrada, 0) - IFNULL(ts.valor_saida, 0)
-                    END AS Total,
-                    IFNULL(
-                        (IFNULL(te.valor_entrada, 0) - IFNULL(ts.valor_saida, 0))
-                        / NULLIF((IFNULL(te.qtd_entrada, 0) - IFNULL(ts.qtd_saida, 0)), 0),
-                        p.preco
-                    ) AS PrecoMedio,
-                    p.oculto,
-                    a.ativo
-                FROM produto p
-                LEFT JOIN unidade u ON u.id_unidade = p.id_unidade
-                LEFT JOIN tabela_entradas te ON te.id_produto = p.id_produto
-                LEFT JOIN tabela_saidas ts 
-                    ON ts.id_produto = p.id_produto
-                    AND ts.id_almoxarifado = te.id_almoxarifado
-                LEFT JOIN almoxarifado a ON a.id_almoxarifado = te.id_almoxarifado;
-                "
-            );
+                    CREATE TEMPORARY TABLE IF NOT EXISTS estoque_com_preco_atualizado AS
+                    SELECT
+                        p.id_produto,
+                        p.id_categoria_produto,
+                        p.descricao,
+                        u.descricao_unidade AS unidade,
+                        a.id_almoxarifado,
+                        est.qtd AS qtd,
+                        est.qtd * IFNULL(
+                            te.valor_entrada / NULLIF(te.qtd_entrada, 0),
+                            p.preco
+                        ) AS Total,
+                        IFNULL(
+                            te.valor_entrada / NULLIF(te.qtd_entrada, 0),
+                            p.preco
+                        ) AS PrecoMedio,
+                        p.oculto,
+                        p.ativo AS produto_ativo,
+                        a.ativo
+                    FROM estoque est
+                    INNER JOIN produto p ON p.id_produto = est.id_produto
+                    INNER JOIN almoxarifado a ON a.id_almoxarifado = est.id_almoxarifado
+                    LEFT JOIN unidade u ON u.id_unidade = p.id_unidade
+                    LEFT JOIN tabela_entradas te 
+                        ON te.id_produto = est.id_produto
+                        AND te.id_almoxarifado = est.id_almoxarifado
+                    LEFT JOIN tabela_saidas ts 
+                        ON ts.id_produto = est.id_produto
+                        AND ts.id_almoxarifado = est.id_almoxarifado;
+                    "
+                );
 
             // Query principal segura
             $this->setQuery(
                 "SELECT 
-                    e.qtd AS qtd_total, 
+                    SUM(e.qtd) AS qtd_total, 
                     e.descricao, 
-                    e.Total AS valor_total, 
-                    e.PrecoMedio,
+                    SUM(e.Total) AS valor_total,
+                    CASE 
+                        WHEN SUM(e.qtd) != 0 THEN SUM(e.Total) / SUM(e.qtd)
+                        ELSE AVG(e.PrecoMedio)
+                    END AS PrecoMedio,
                     e.unidade
                 FROM estoque_com_preco_atualizado e 
                 $params
+                GROUP BY 
+                    e.id_produto,
+                    e.descricao,
+                    e.unidade
                 ORDER BY e.descricao;
                 "
             );
@@ -388,6 +384,8 @@ class Item
                     SUM(ientrada.qtd * ientrada.valor_unitario) AS valor_entrada
                 FROM ientrada
                 INNER JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
+                WHERE entrada.ativo = 1
+                    AND ientrada.oculto = false
                 GROUP BY ientrada.id_produto, entrada.id_almoxarifado;
 
                 CREATE TEMPORARY TABLE IF NOT EXISTS tabela_saidas AS
@@ -398,41 +396,213 @@ class Item
                     SUM(isaida.qtd * isaida.valor_unitario) AS valor_saida
                 FROM isaida
                 INNER JOIN saida ON saida.id_saida = isaida.id_saida
+                WHERE saida.ativo = 1
+                    AND isaida.oculto = false
                 GROUP BY isaida.id_produto, saida.id_almoxarifado;
 
                 CREATE TEMPORARY TABLE IF NOT EXISTS estoque_com_preco_atualizado AS
                 SELECT
                     p.id_produto,
+                    p.id_categoria_produto,
                     p.descricao,
                     u.descricao_unidade AS unidade,
                     a.id_almoxarifado,
-                    IFNULL(te.qtd_entrada, 0) - IFNULL(ts.qtd_saida, 0) AS qtd,
-                    IFNULL(te.valor_entrada, 0) - IFNULL(ts.valor_saida, 0) AS Total,
+                    est.qtd AS qtd,
+                    est.qtd * IFNULL(
+                        te.valor_entrada / NULLIF(te.qtd_entrada, 0),
+                        p.preco
+                    ) AS Total,
                     IFNULL(
-                        (IFNULL(te.valor_entrada, 0) - IFNULL(ts.valor_saida, 0))
-                        / NULLIF((IFNULL(te.qtd_entrada, 0) - IFNULL(ts.qtd_saida, 0)), 0),
+                        te.valor_entrada / NULLIF(te.qtd_entrada, 0),
                         p.preco
                     ) AS PrecoMedio,
                     p.oculto,
+                    p.ativo AS produto_ativo,
                     a.ativo
-                FROM produto p
+                FROM estoque est
+                INNER JOIN produto p ON p.id_produto = est.id_produto
+                INNER JOIN almoxarifado a ON a.id_almoxarifado = est.id_almoxarifado
                 LEFT JOIN unidade u ON u.id_unidade = p.id_unidade
-                LEFT JOIN tabela_entradas te ON te.id_produto = p.id_produto
+                LEFT JOIN tabela_entradas te 
+                    ON te.id_produto = est.id_produto
+                    AND te.id_almoxarifado = est.id_almoxarifado
                 LEFT JOIN tabela_saidas ts 
-                    ON ts.id_produto = p.id_produto
-                    AND ts.id_almoxarifado = te.id_almoxarifado
-                LEFT JOIN almoxarifado a ON a.id_almoxarifado = te.id_almoxarifado;
-            ");
+                    ON ts.id_produto = est.id_produto
+                    AND ts.id_almoxarifado = est.id_almoxarifado;
+                ");
 
             $this->setQuery("
-                SELECT e.qtd AS qtd_total, e.descricao, e.Total AS valor_total, e.PrecoMedio, e.unidade
+                SELECT 
+                    SUM(e.qtd) AS qtd_total,
+                    e.descricao,
+                    SUM(e.Total) AS valor_total,
+                    CASE 
+                        WHEN SUM(e.qtd) != 0 THEN SUM(e.Total) / SUM(e.qtd)
+                        ELSE AVG(e.PrecoMedio)
+                    END AS PrecoMedio,
+                    e.unidade
                 FROM estoque_com_preco_atualizado e
-                WHERE qtd != 0 AND e.oculto = false AND (e.ativo IS NULL OR e.ativo = 1)
+                WHERE e.qtd != 0 
+                    AND e.oculto = false 
+                    AND e.produto_ativo = 1 
+                    AND (e.ativo IS NULL OR e.ativo = 1)
+                GROUP BY 
+                    e.id_produto,
+                    e.descricao,
+                    e.unidade
                 ORDER BY e.descricao;
             ");
         }
     }
 
+    private function itensCompra()
+    {
+        if ($this->hasValue()) {
+            $params = "WHERE p.oculto = false AND a.ativo = 1 AND p.ativo = 1 AND e.qtd<= e.qtd_minima";
+            $cont = 1;
+
+            if ($this->getAlmoxarifado()) {
+	            $params = $this->param($params, $cont) . " e.id_almoxarifado = :idAlmoxarifado ";
+	            $this->paramsExternos[':idAlmoxarifado'] = $this->getAlmoxarifado();
+	            $cont++;
+            }
+
+            if ($this->getTipo()) {
+	            $params = $this->param($params, $cont) . " p.id_categoria_produto = :idCategoriaProduto ";
+	            $this->paramsExternos[':idCategoriaProduto'] = $this->getTipo();
+	            $cont++;
+            }
+
+            $filtroPeriodoConsumo = "";
+
+            if ($this->getPeriodo()['inicio']) {
+                $filtroPeriodoConsumo .= " AND saida.data >= :dataInicio";
+
+                $this->paramsExternos[':dataInicio']
+                    = $this->getPeriodo()['inicio'];
+            }
+
+            if ($this->getPeriodo()['fim']) {
+                $filtroPeriodoConsumo .= " AND saida.data <= :dataFim";
+
+                $this->paramsExternos[':dataFim']
+                    = $this->getPeriodo()['fim'];
+            }
+
+            $inicio = $this->getPeriodo()['inicio']
+                ? ':dataInicio'
+                : "COALESCE(
+                    (
+                        SELECT MIN(s2.data)
+                        FROM saida s2
+                        WHERE s2.ativo = 1
+                        
+                    ),
+                    CURDATE()
+                )";
+
+            $fim = $this->getPeriodo()['fim']
+                ? ':dataFim'
+                : 'CURDATE()';
+
+            $tipoMedia = $this->getTipoMedia();
+
+            switch ($tipoMedia) {
+                case 'mes':
+                    $divisor = "
+                        GREATEST(
+                            ROUND(
+                                (TIMESTAMPDIFF(DAY, $inicio, $fim) + 1) / 30
+                            ),
+                            1
+                        )
+                    ";
+                    break;
+
+                case 'ano':
+                    $divisor = "
+                        GREATEST(
+                            ROUND(
+                                (TIMESTAMPDIFF(DAY, $inicio, $fim) + 1) / 365
+                            ),
+                            1
+                        )
+                    ";
+                    break;
+
+                case 'dia':
+                default:
+                    $divisor = "
+                        GREATEST(
+                            TIMESTAMPDIFF(DAY, $inicio, $fim) + 1,
+                            1
+                        )
+                    ";
+                    break;
+            }
+
+            // Query principal segura
+            $this->setQuery(
+                "SELECT 
+                    p.descricao,
+                    e.qtd AS qtd_total,
+                    e.qtd_minima,
+                    u.descricao_unidade AS unidade,
+                    COALESCE(
+                        dados_entrada.valor_entrada
+                        / NULLIF(dados_entrada.qtd_entrada, 0),
+                        p.preco,
+                        0
+                    ) AS PrecoMedio,
+                    e.qtd * COALESCE(
+                        dados_entrada.valor_entrada
+                        / NULLIF(dados_entrada.qtd_entrada, 0),
+                        p.preco,
+                        0
+                    ) AS valor_total,
+
+                    COALESCE(consumo.qtd_saida,0) AS qtd_saida,
+                    ROUND(
+                        COALESCE(consumo.qtd_saida, 0)
+                        / NULLIF($divisor, 0),
+                        2
+                    ) AS media_saida
+                FROM estoque e 
+                JOIN almoxarifado a ON a.id_almoxarifado = e.id_almoxarifado
+                JOIN produto p ON p.id_produto = e.id_produto
+                LEFT JOIN unidade u ON u.id_unidade = p.id_unidade
+                LEFT JOIN (
+                    SELECT 
+                        isaida.id_produto,
+                        saida.id_almoxarifado,
+                        SUM(isaida.qtd) AS qtd_saida
+                    FROM isaida 
+                    INNER JOIN saida
+                        ON saida.id_saida = isaida.id_saida
+                    WHERE isaida.oculto = false AND saida.ativo = 1
+                    $filtroPeriodoConsumo
+                    GROUP BY isaida.id_produto, saida.id_almoxarifado
+                ) consumo 
+                    ON consumo.id_produto = e.id_produto
+                    AND consumo.id_almoxarifado = e.id_almoxarifado
+                LEFT JOIN (
+                    SELECT ientrada.id_produto,
+                        entrada.id_almoxarifado,
+                        SUM(ientrada.qtd) AS qtd_entrada,
+                        SUM(ientrada.qtd*ientrada.valor_unitario) AS valor_entrada
+                    FROM ientrada
+                    INNER JOIN entrada ON entrada.id_entrada = ientrada.id_entrada
+                    WHERE entrada.ativo = 1 AND ientrada.oculto = false
+                    GROUP BY ientrada.id_produto, entrada.id_almoxarifado
+                ) dados_entrada
+                    ON dados_entrada.id_produto = e.id_produto
+                    AND dados_entrada.id_almoxarifado = e.id_almoxarifado
+                $params
+                ORDER BY p.descricao;
+                "
+            );
+        }
+    }
 
     private function selecRelatorio()
     {
@@ -445,6 +615,12 @@ class Item
                 break;
             case 'estoque':
                 $this->estoque();
+                break;
+            case 'requisicao':
+                $this->requisicao();
+                break;
+            case 'itens_compra':
+                $this->itensCompra();
                 break;
         }
     }
@@ -475,16 +651,24 @@ class Item
         $tot_val = 0;
 
         foreach ($query as $item) {
-            if ($this->getRelatorio() == 'estoque') {
+            if ($this->getRelatorio() == 'estoque' || $this->getRelatorio() == 'itens_compra') {
                 $class = '';
                 if ($item['qtd_total'] < 0) {
                     $item['valor_total'] = 0;
                     $class = 'class="table-danger"';
                 }
 
+                $minimaTd = '';
+                $mediaTd = '';
+                if ($this->getRelatorio() == 'itens_compra') {
+                    $minimaTd = '<td>' . htmlspecialchars($item['qtd_minima']) . '</td>';
+                    $mediaTd =  '<td>'. number_format($item['media_saida'], 2) .' /' . htmlspecialchars($this->getTipoMedia(), ENT_QUOTES, 'UTF-8') .'</td>';
+                }
+
                 echo ('
                 <tr ' . $class . '>
                     <td scope="row" class="align-right">' . htmlspecialchars($item['qtd_total']) . '</td>
+                    ' . $minimaTd  . $mediaTd . '
                     <td>' . htmlspecialchars($item['descricao'], ENT_QUOTES, 'UTF-8') . '</td>
                     <td>R$ ' . number_format($item['PrecoMedio'], 2) . '</td>
                     <td>' . htmlspecialchars($item['unidade'], ENT_QUOTES, 'UTF-8') . '</td>
@@ -557,6 +741,212 @@ class Item
                     <td>R$ ' . number_format($tot_val, 2) . '</td>
                 </tr>
             ');
+        }
+    }
+
+    private function requisicao()
+    {
+	    if ($this->getModoRequisicao() === 'completo') {
+		    $this->requisicaoCompleta();
+		    return;
+	    }
+
+	    $params = "
+		    WHERE isaida.qtd > 0
+		    AND isaida.oculto = false
+		    AND saida.ativo = 1
+		    AND p.oculto = false
+		    AND p.ativo = 1
+		    AND a.ativo = 1
+	    ";
+
+	    if ($this->getAlmoxarifado()) {
+		    $params .= " AND saida.id_almoxarifado = :idAlmoxarifado";
+		    $this->paramsExternos[':idAlmoxarifado'] = $this->getAlmoxarifado();
+	    }
+
+	    if ($this->getTipo()) {
+		    $params .= " AND c.id_categoria_produto = :idCategoriaProduto";
+		    $this->paramsExternos[':idCategoriaProduto'] = $this->getTipo();
+	    }
+
+	    if ($this->getPeriodo()['inicio']) {
+		    $params .= " AND saida.data >= :dataInicio";
+		    $this->paramsExternos[':dataInicio'] = $this->getPeriodo()['inicio'];
+	    }
+
+	    if ($this->getPeriodo()['fim']) {
+		    $params .= " AND saida.data <= :dataFim";
+		    $this->paramsExternos[':dataFim'] = $this->getPeriodo()['fim'];
+	    }
+
+	    if (!$this->getPeriodo()['inicio'] && !$this->getPeriodo()['fim']) {
+		    $params .= " AND saida.data >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)";
+	    }
+
+	    $this->setQuery("
+		    SELECT
+			    p.id_produto,
+			    p.descricao,
+			    c.descricao_categoria,
+			    SUM(isaida.qtd) AS qtd_saida
+		    FROM isaida
+		    INNER JOIN saida 
+			    ON saida.id_saida = isaida.id_saida
+		    INNER JOIN produto p 
+			    ON p.id_produto = isaida.id_produto
+		    INNER JOIN categoria_produto c 
+			    ON c.id_categoria_produto = p.id_categoria_produto
+		    INNER JOIN almoxarifado a 
+			    ON a.id_almoxarifado = saida.id_almoxarifado
+		    $params
+		    GROUP BY
+			    p.id_produto,
+			    p.descricao,
+			    c.descricao_categoria
+            HAVING SUM(isaida.qtd) >= 10
+		    ORDER BY
+			    c.descricao_categoria ASC,
+			    qtd_saida DESC,
+			    p.descricao ASC
+	    ");
+    }
+
+    private function requisicaoCompleta()
+    {
+    	$params = "WHERE p.oculto = false AND p.ativo = 1 AND a.ativo = 1";
+	    $having = "";
+
+	    if ($this->getAlmoxarifado()) {
+		    $params .= " AND e.id_almoxarifado = :idAlmoxarifado";
+		    $this->paramsExternos[':idAlmoxarifado'] = $this->getAlmoxarifado();
+	    }
+
+	    if ($this->getTipo()) {
+		    $params .= " AND c.id_categoria_produto = :idCategoriaProduto";
+		    $this->paramsExternos[':idCategoriaProduto'] = $this->getTipo();
+	    }
+
+	    if (!$this->getMostrarZerado()) {
+		    $having = "HAVING SUM(e.qtd) > 0";
+	    }
+
+	    $this->setQuery("
+		    SELECT
+			    p.id_produto,
+			    p.descricao,
+			    c.descricao_categoria,
+			    SUM(e.qtd) AS qtd
+		    FROM produto p
+		    INNER JOIN categoria_produto c 
+			    ON c.id_categoria_produto = p.id_categoria_produto
+		    INNER JOIN estoque e 
+			    ON e.id_produto = p.id_produto
+		    INNER JOIN almoxarifado a 
+			    ON a.id_almoxarifado = e.id_almoxarifado
+		    $params
+		    GROUP BY
+			    p.id_produto,
+			    p.descricao,
+			    c.descricao_categoria
+		    $having
+		    ORDER BY c.descricao_categoria ASC, p.descricao ASC
+	    ");
+    }
+
+    public function displayRequisicao()
+    {
+        $this->selecRelatorio();
+        $produtos = $this->query();
+
+        if (empty($produtos)) {
+            echo '<p>Nenhum produto encontrado para gerar o relatório de requisição.</p>';
+            return;
+        }
+
+        $produtosPorCategoria = [];
+
+        foreach ($produtos as $produto) {
+            $categoria = $produto['descricao_categoria'] ?: 'Sem categoria';
+            $produtosPorCategoria[$categoria][] = $produto;
+        }
+
+        $produtosPorFolha = 10;
+
+        foreach ($produtosPorCategoria as $categoria => $listaProdutos) {
+	        if ($this->getModoRequisicao() === 'movimentados') {
+		        $listaProdutos = array_slice($listaProdutos, 0, 8);
+
+		        for ($i = 1; $i <= 2; $i++) {
+	                $listaProdutos[] = [
+		                'id_produto' => null,
+		                'descricao' => '',
+		                'descricao_categoria' => $categoria,
+		                'linha_manual' => true
+	                ];
+                }
+	        }
+
+	        $folhas = array_chunk($listaProdutos, $produtosPorFolha);
+            $totalFolhas = count($folhas);
+
+            foreach ($folhas as $indiceFolha => $produtosFolha) {
+                $numeroFolha = $indiceFolha + 1;
+
+                echo '<section class="folha-requisicao">';
+                echo '<div class="cabecalho-requisicao">';
+                echo htmlspecialchars(mb_strtoupper($categoria, 'UTF-8')) . ' &nbsp; | &nbsp; ';
+                echo 'FOLHA ' . $numeroFolha . '/' . $totalFolhas . ' &nbsp; | &nbsp; ';
+                echo 'MÊS/ANO: ____/________';
+                echo '</div>';
+
+                echo '<div class="instrucao-requisicao">';
+                echo 'Anote a quantidade retirada no quadrinho do dia. Se houver mais de uma saída no mesmo dia, escreva no mesmo espaço separando os números.';
+                echo '</div>';
+
+                echo '<table class="tabela-requisicao">';
+
+                foreach ($produtosFolha as $produto) {
+                    echo '<tr>';
+
+                    $isLinhaManual = !empty($produto['linha_manual']);
+
+                    echo '<td class="produto-requisicao' . ($isLinhaManual ? ' produto-requisicao-manual' : '') . '" rowspan="2">';
+
+                    if ($isLinhaManual) {
+	                    echo '<div class="texto-produto-manual">OUTRO PRODUTO:</div>';
+	                    echo '<div class="linha-produto-manual"></div>';
+                    } else {
+	                    echo htmlspecialchars($produto['descricao'], ENT_QUOTES, 'UTF-8');
+                    }
+
+                    echo '</td>';
+
+                    for ($dia = 1; $dia <= 16; $dia++) {
+                        echo '<td class="dia-requisicao dia-azul">';
+                        echo str_pad($dia, 2, '0', STR_PAD_LEFT);
+                        echo '</td>';
+                    }
+
+                    echo '</tr>';
+
+                    echo '<tr>';
+
+                    for ($dia = 17; $dia <= 31; $dia++) {
+                        echo '<td class="dia-requisicao">';
+                        echo str_pad($dia, 2, '0', STR_PAD_LEFT);
+                        echo '</td>';
+                    }
+
+                    echo '<td class="dia-requisicao total-requisicao">TOT.</td>';
+
+                    echo '</tr>';
+                }
+
+                echo '</table>';
+                echo '<div class="rodape-requisicao">Controle mensal de requisição - modelo compacto</div>';
+                echo '</section>';
+            }
         }
     }
 
@@ -699,5 +1089,23 @@ class Item
         $this->tipoMedia = $tipoMedia;
 
         return $this;
+    }
+
+    public function getModoRequisicao()
+    {
+	    return $this->modoRequisicao;
+    }
+
+    public function setModoRequisicao($modoRequisicao)
+    {
+	    $modosPermitidos = ['movimentados', 'completo'];
+
+	    if (!in_array($modoRequisicao, $modosPermitidos, true)) {
+		    $modoRequisicao = 'movimentados';
+	    }
+
+	    $this->modoRequisicao = $modoRequisicao;
+
+	    return $this;
     }
 }

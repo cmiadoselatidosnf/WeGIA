@@ -1,10 +1,17 @@
 const formRelatorio = document.getElementById('form-relatorio-contribuicao');
+const periodoSelect = document.getElementById('periodo');
+const specificPeriodContainer = document.getElementById('specific-period-container');
+const dataInicio = document.getElementById('data-inicio');
+const dataFim = document.getElementById('data-fim');
 
 function formatarData(data) {
-    if (!data) return ''; // Trata datas nulas ou vazias
-    const dataObj = new Date(data);
-    if (isNaN(dataObj)) return data; // Caso a data não seja válida, retorna como está
-    return dataObj.toLocaleDateString('pt-BR');
+    if (!data) {
+        return data;
+    }
+    let dateParts = data.split("-");
+    return `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+
+    return data;
 };
 
 function gerarTabela(data) {
@@ -13,11 +20,13 @@ function gerarTabela(data) {
     tBody.innerHTML = '';
 
     let valor = 0;
+    let qtdContribuicoes = 0;
 
     data.forEach(element => {
         if (parseInt(element.status) === 1) {
             valor += parseFloat(element.valor);
         }
+        qtdContribuicoes++;
 
         const tr = document.createElement('tr');
 
@@ -25,7 +34,7 @@ function gerarTabela(data) {
         tdCodigo.innerText = element.codigo;
 
         const tdNome = document.createElement('td');
-        tdNome.innerText = element.nomeSocio;
+        tdNome.innerText = element.nomeSocio + (element.sobrenomeSocio != null ? " " + element.sobrenomeSocio : "");
 
         const tdDataGeracao = document.createElement('td');
         tdDataGeracao.innerText = formatarData(element.dataGeracao);
@@ -49,13 +58,16 @@ function gerarTabela(data) {
         tdPlataforma.innerText = element.plataforma;
 
         const tdMeioPagamento = document.createElement('td');
-        
-        switch(element.meio){
-            case 'Carne' : 
+
+        switch (element.meio) {
+            case 'Carne':
                 tdMeioPagamento.innerText = 'Carnê';
                 break;
-            case 'Recorrencia' :
+            case 'Recorrencia':
                 tdMeioPagamento.innerText = 'Recorrência';
+                break;
+            case 'CartaoCredito':
+                tdMeioPagamento.innerText = 'Cartão de crédito';
                 break;
             default:
                 tdMeioPagamento.innerText = element.meio;
@@ -65,7 +77,7 @@ function gerarTabela(data) {
         tBody.appendChild(tr);
     });
 
-    return valor;
+    return { valor: valor, qtdContribuicoes: qtdContribuicoes };
 }
 
 formRelatorio.addEventListener('submit', async function (ev) {
@@ -112,10 +124,12 @@ formRelatorio.addEventListener('submit', async function (ev) {
             botaoImprimir.classList.add('hidden');
         } else {
             //Informações para o resumo do relatório
-            const valorPago = gerarTabela(result).toLocaleString('pt-BR', {
+            const relatorioData = gerarTabela(result);
+            const valorPago = relatorioData.valor.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
             });
+            const qtdContribuicoes = relatorioData.qtdContribuicoes;
             const periodoSelecionado = document.querySelector('#periodo option:checked').textContent;
             const socioSelecionado = document.querySelector('#socio option:checked').textContent;
             const statusSelecionado = document.querySelector('#status option:checked').textContent;
@@ -133,6 +147,7 @@ formRelatorio.addEventListener('submit', async function (ev) {
             <p><strong>Sócio selecionado</strong>: ${socioSelecionado}</p>
             <p><strong>Status de contribuição selecionado</strong>: ${statusSelecionado}</p>
             <p><strong>Valor total adquirido</strong>: ${valorPago}</p>
+            <p><strong>Quantidade de contribuições</strong>: ${qtdContribuicoes}</p>
             `;
 
             // Exibe a tabela e o botão
@@ -145,5 +160,20 @@ formRelatorio.addEventListener('submit', async function (ev) {
     } finally {
         relatorioBtn.innerHTML = 'Gerar relatório';
         relatorioBtn.disabled = false;
+    }
+});
+
+//Comportamento do período específico
+periodoSelect.addEventListener('change', function () {
+    if (this.value === '9') {
+        specificPeriodContainer.classList.remove('hidden');
+
+        dataInicio.required = true;
+        dataFim.required = true;
+    } else {
+        specificPeriodContainer.classList.add('hidden');
+
+        dataInicio.required = false;
+        dataFim.required = false;
     }
 });

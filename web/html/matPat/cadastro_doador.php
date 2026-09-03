@@ -16,6 +16,19 @@ if (!isset($_SESSION['usuario'])) {
 require_once dirname(__FILE__, 2) . DIRECTORY_SEPARATOR . 'permissao' . DIRECTORY_SEPARATOR . 'permissao.php';
 permissao($_SESSION['id_pessoa'], 23, 3);
 
+include_once ROOT . '/dao/Conexao.php';
+
+$pdo = Conexao::connect();
+
+$stmtAlmoxarifados = $pdo->query("
+    SELECT id_almoxarifado, descricao_almoxarifado
+    FROM almoxarifado
+    WHERE ativo = 1
+    ORDER BY descricao_almoxarifado
+");
+
+$almoxarifados = $stmtAlmoxarifados->fetchAll(PDO::FETCH_ASSOC);
+
 // Adiciona a Função display_campo($nome_campo, $tipo_campo)
 require_once ROOT . "/html/personalizacao_display.php";
 ?>
@@ -66,13 +79,23 @@ require_once ROOT . "/html/personalizacao_display.php";
 	<script src="<?= WWW ?>Functions/testaCPF.js"></script>
 	<script>
 		function validarCPF(strCPF) {
+			strCPF = strCPF.trim();
+
+			if (strCPF.length === 0) {
+				$('#cpfInvalido').hide();
+				document.getElementById("enviar").disabled = false;
+				return true;
+			}
+
 			if (!testaCPF(strCPF)) {
 				$('#cpfInvalido').show();
 				document.getElementById("enviar").disabled = true;
-			} else {
-				$('#cpfInvalido').hide();
-				document.getElementById("enviar").disabled = false;
+				return false;
 			}
+
+			$('#cpfInvalido').hide();
+			document.getElementById("enviar").disabled = false;
+			return true;
 		}
 
 		function FormataCnpj(campo, teclapres) {
@@ -143,23 +166,34 @@ require_once ROOT . "/html/personalizacao_display.php";
 		}
 
 		function exibirCNPJ(cnpj) {
+			cnpj = cnpj.trim();
+
+			if (cnpj.length === 0) {
+				$('#cnpjInvalido').hide();
+				document.getElementById("enviar").disabled = false;
+				return true;
+			}
+
 			if (!validarCNPJ(cnpj)) {
 				$('#cnpjInvalido').show();
 				document.getElementById("enviar").disabled = true;
-			} else {
-				$('#cnpjInvalido').hide();
-				document.getElementById("enviar").disabled = false;
+				return false;
 			}
+
+			$('#cnpjInvalido').hide();
+			document.getElementById("enviar").disabled = false;
+			return true;
 		}
 	</script>
 	<script type="text/javascript">
 		function validar() {
-			var cnpj = document.getElementById("cnpj");
+			/*var cnpj = document.getElementById("cnpj");
 			var cpf = document.getElementById("NCPF");
 			if (cnpj.value.length == 0 && cpf.value.length == 0) {
 				alert("Preencha o campo CNPJ ou o campo CPF");
 				return false;
-			}
+			}*/
+			return true;
 		}
 		$(function() {
 			$("#header").load("../header.php");
@@ -251,8 +285,25 @@ require_once ROOT . "/html/personalizacao_display.php";
 											<div class="form-group">
 												<label class="col-md-3 control-label" for="profileCompany">Telefone</label>
 												<div class="col-md-6">
-													<input type="text" class="form-control" minlength="12" name="telefone" id="telefone" id="profileCompany" placeholder="Ex: (22)99999-9999" onkeypress="return Onlynumbers(event)" onkeyup="mascara('(##)#####-####',this,event)" required>
+													<input type="text" class="form-control" minlength="12" name="telefone" id="telefone" id="profileCompany" placeholder="Ex: (22)99999-9999" onkeypress="return Onlynumbers(event)" onkeyup="mascara('(##)#####-####',this,event)">
 												</div>
+											</div>
+											<div class="form-group">
+    											<label class="col-md-3 control-label">Almoxarifado(s)</label>
+    											<div class="col-md-6">
+        											<?php foreach ($almoxarifados as $almoxarifado): ?>
+            											<div class="checkbox">
+                											<label>
+                    											<input 
+                        											type="checkbox" 
+                        											name="almoxarifados[]" 
+                        											value="<?= (int) $almoxarifado['id_almoxarifado'] ?>"
+                    											>
+                    											<?= htmlspecialchars($almoxarifado['descricao_almoxarifado'], ENT_QUOTES, 'UTF-8') ?>
+                											</label>
+            											</div>
+        											<?php endforeach; ?>
+    											</div>
 											</div>
 											<input type="hidden" name="nomeClasse" value="OrigemControle">
 											<input type="hidden" name="metodo" value="incluir">

@@ -15,7 +15,7 @@ class ProjetoControle
 
     public function __construct()
     {
-        $this->projetoDAO  = new ProjetoDAO();
+        $this->projetoDAO    = new ProjetoDAO();
         $this->projetoClasse = new ProjetoClasse();
     }
 
@@ -88,7 +88,7 @@ class ProjetoControle
     private function obterDadosRequisicao(): array
     {
         $contentType = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
-        $isJson = strpos($contentType, 'application/json') !== false;
+        $isJson      = strpos($contentType, 'application/json') !== false;
 
         if ($isJson) {
             $json = file_get_contents('php://input');
@@ -178,9 +178,17 @@ class ProjetoControle
             echo json_encode(['sucesso' => true, 'mensagem' => 'Projeto cadastrado com sucesso!']);
             exit();
         } catch (Exception $e) {
-            http_response_code($e->getCode() >= 400 ? $e->getCode() : 500);
-            header('Content-Type: application/json');
-            echo json_encode(['erro' => $e->getMessage()]);
+            $code = $e->getCode();
+            if ($code >= 400 && $code < 500) {
+                http_response_code($code);
+                header('Content-Type: application/json');
+                echo json_encode(['erro' => $e->getMessage()]);
+            } else {
+                $this->logErro($e, 'incluir');
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['erro' => 'Não foi possível cadastrar o projeto. Tente novamente.']);
+            }
             exit();
         }
     }
@@ -188,7 +196,7 @@ class ProjetoControle
     public function listarTodos()
     {
         try {
-            $projetos = $this->projetoDAO->listarTodos();
+            $projetos             = $this->projetoDAO->listarTodos();
             $_SESSION['projetos'] = json_encode($projetos);
         } catch (Exception $e) {
             Util::tratarException($e);
@@ -257,9 +265,17 @@ class ProjetoControle
             echo json_encode(['sucesso' => true, 'mensagem' => 'Projeto alterado com sucesso!']);
             exit();
         } catch (Exception $e) {
-            http_response_code($e->getCode() >= 400 ? $e->getCode() : 500);
-            header('Content-Type: application/json');
-            echo json_encode(['erro' => $e->getMessage()]);
+            $code = $e->getCode();
+            if ($code >= 400 && $code < 500) {
+                http_response_code($code);
+                header('Content-Type: application/json');
+                echo json_encode(['erro' => $e->getMessage()]);
+            } else {
+                $this->logErro($e, 'alterarProjeto');
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['erro' => 'Não foi possível alterar o projeto. Tente novamente.']);
+            }
             exit();
         }
     }
@@ -274,6 +290,18 @@ class ProjetoControle
             exit();
         }
         return $data;
+    }
+
+    private function logErro(Exception $e, string $contexto = ''): void
+    {
+        $origem = $contexto ?: debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['function'] ?? 'desconhecido';
+        error_log(sprintf(
+            '[ProjetoControle::%s] %s em %s:%d',
+            $origem,
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine()
+        ));
     }
 
     // ================== FUNÇÕES PARA EQUIPE ==================
@@ -312,7 +340,8 @@ class ProjetoControle
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -339,7 +368,24 @@ class ProjetoControle
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarFuncionariosAtivosAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $termo = trim(filter_input(INPUT_GET, 'termo', FILTER_DEFAULT) ?? '');
+
+            $executantes = $this->projetoDAO->listarFuncionariosAtivos($termo !== '' ? $termo : null);
+
+            echo json_encode(['success' => true, 'data' => $executantes]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -349,17 +395,90 @@ class ProjetoControle
             header('Content-Type: application/json');
 
             $projeto_id = filter_input(INPUT_GET, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $turma_ids  = isset($_GET['turma_ids']) && is_array($_GET['turma_ids'])
+                ? array_filter(array_map('intval', $_GET['turma_ids']), fn($v) => $v > 0)
+                : [];
 
             if (!$projeto_id || $projeto_id < 1) {
                 echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
                 return;
             }
 
-            $equipe = $this->projetoDAO->listarEquipeProjeto($projeto_id);
+            if (!empty($turma_ids)) {
+                $equipe = $this->projetoDAO->listarEquipeProjetoPorTurmas($projeto_id, array_values($turma_ids));
+            } else {
+                $equipe = $this->projetoDAO->listarEquipeProjeto($projeto_id);
+            }
 
             echo json_encode(['success' => true, 'data' => $equipe]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarUmMembroEquipeAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $id = filter_input(INPUT_GET, 'id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id || $id < 1) {
+                echo json_encode(['success' => false, 'message' => 'ID inválido']);
+                return;
+            }
+
+            $membro = $this->projetoDAO->buscarMembroEquipe($id);
+
+            if (!$membro) {
+                echo json_encode(['success' => false, 'message' => 'Membro não encontrado']);
+                return;
+            }
+
+            echo json_encode(['success' => true, 'data' => $membro]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function alterarFuncaoMembroEquipe()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id         = filter_input(INPUT_POST, 'id', FILTER_SANITIZE_NUMBER_INT);
+            $projeto_id = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $id_funcao  = filter_input(INPUT_POST, 'id_funcao', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id || $id < 1) {
+                echo json_encode(['success' => false, 'message' => 'ID inválido']);
+                return;
+            }
+
+            if (!$projeto_id || $projeto_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
+                return;
+            }
+
+            if (!$id_funcao || $id_funcao < 1) {
+                echo json_encode(['success' => false, 'message' => 'Função inválida']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->alterarFuncaoMembroEquipe($id, $projeto_id, $id_funcao);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -385,7 +504,8 @@ class ProjetoControle
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -398,7 +518,8 @@ class ProjetoControle
 
             echo json_encode(['success' => true, 'data' => $funcoes]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -408,11 +529,12 @@ class ProjetoControle
     {
         try {
             header('Content-Type: application/json');
-            // Delegado ao DAO — sem acesso direto ao pdo, sem dependência de CPF
-            $atendidos = $this->projetoDAO->listarTodosAtendidos();
+            $termo     = trim(filter_input(INPUT_GET, 'termo', FILTER_DEFAULT) ?? '');
+            $atendidos = $this->projetoDAO->listarTodosAtendidos($termo !== '' ? $termo : null);
             echo json_encode(['success' => true, 'data' => $atendidos]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -422,17 +544,51 @@ class ProjetoControle
             header('Content-Type: application/json');
 
             $projeto_id = filter_input(INPUT_GET, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $turma_ids  = isset($_GET['turma_ids']) && is_array($_GET['turma_ids'])
+                ? array_filter(array_map('intval', $_GET['turma_ids']), fn($v) => $v > 0)
+                : [];
 
             if (!$projeto_id || $projeto_id < 1) {
                 echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
                 return;
             }
 
-            $atendidos = $this->projetoDAO->listarAtendidosProjeto($projeto_id);
+            if (!empty($turma_ids)) {
+                $atendidos = $this->projetoDAO->listarAtendidosProjetoPorTurmas($projeto_id, array_values($turma_ids));
+            } else {
+                $atendidos = $this->projetoDAO->listarAtendidosProjeto($projeto_id);
+            }
 
             echo json_encode(['success' => true, 'data' => $atendidos]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarUmAtendidoProjetoAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $id = filter_input(INPUT_GET, 'id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id || $id < 1) {
+                echo json_encode(['success' => false, 'message' => 'ID inválido']);
+                return;
+            }
+
+            $atendido = $this->projetoDAO->buscarAtendidoProjeto($id);
+
+            if (!$atendido) {
+                echo json_encode(['success' => false, 'message' => 'Atendido não encontrado']);
+                return;
+            }
+
+            echo json_encode(['success' => true, 'data' => $atendido]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -445,7 +601,8 @@ class ProjetoControle
 
             echo json_encode(['success' => true, 'data' => $status]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -462,7 +619,7 @@ class ProjetoControle
 
             $projeto_id  = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
             $id_atendido = filter_input(INPUT_POST, 'atendido_id', FILTER_SANITIZE_NUMBER_INT);
-            $id_status   = filter_input(INPUT_POST, 'status_id', FILTER_SANITIZE_NUMBER_INT);
+            $id_status   = 1; // Status "Ativo" fixo ao vincular um atendido ao projeto
 
             if (!$projeto_id || $projeto_id < 1) {
                 echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
@@ -474,16 +631,12 @@ class ProjetoControle
                 return;
             }
 
-            if (!$id_status || $id_status < 1) {
-                echo json_encode(['success' => false, 'message' => 'Status inválido']);
-                return;
-            }
-
             $resultado = $this->projetoDAO->adicionarAtendidoProjeto($projeto_id, $id_atendido, $id_status);
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -510,7 +663,8 @@ class ProjetoControle
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -525,11 +679,17 @@ class ProjetoControle
                 return;
             }
 
-            $id        = filter_input(INPUT_POST, 'id', FILTER_SANITIZE_NUMBER_INT);
-            $id_status = filter_input(INPUT_POST, 'id_status', FILTER_SANITIZE_NUMBER_INT);
+            $id         = filter_input(INPUT_POST, 'id', FILTER_SANITIZE_NUMBER_INT);
+            $projeto_id = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $id_status  = filter_input(INPUT_POST, 'id_status', FILTER_SANITIZE_NUMBER_INT);
 
             if (!$id || $id < 1) {
                 echo json_encode(['success' => false, 'message' => 'ID inválido']);
+                return;
+            }
+
+            if (!$projeto_id || $projeto_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
                 return;
             }
 
@@ -538,11 +698,12 @@ class ProjetoControle
                 return;
             }
 
-            $resultado = $this->projetoDAO->atualizarStatusAtendidoProjeto($id, $id_status);
+            $resultado = $this->projetoDAO->atualizarStatusAtendidoProjeto($id, $projeto_id, $id_status);
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 
@@ -568,7 +729,363 @@ class ProjetoControle
 
             echo json_encode(['success' => $resultado]);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    // ================== FUNÇÕES PARA TURMAS ==================
+
+    public function listarExecutantesForaDaTurmaAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $projeto_id = filter_input(INPUT_GET, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $turma_id   = filter_input(INPUT_GET, 'turma_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$projeto_id || $projeto_id < 1 || !$turma_id || $turma_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Parâmetros inválidos']);
+                return;
+            }
+
+            $data = $this->projetoDAO->listarExecutantesForaDaTurma($projeto_id, $turma_id);
+            echo json_encode(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarExecutantesDaTurmaAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $turma_id = filter_input(INPUT_GET, 'turma_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$turma_id || $turma_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $data = $this->projetoDAO->listarExecutantesDaTurma($turma_id);
+            echo json_encode(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarAtendidosForaDaTurmaAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $projeto_id = filter_input(INPUT_GET, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $turma_id   = filter_input(INPUT_GET, 'turma_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$projeto_id || $projeto_id < 1 || !$turma_id || $turma_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Parâmetros inválidos']);
+                return;
+            }
+
+            $data = $this->projetoDAO->listarAtendidosForaDaTurma($projeto_id, $turma_id);
+            echo json_encode(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarAtendidosDaTurmaAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $turma_id = filter_input(INPUT_GET, 'turma_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$turma_id || $turma_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $data = $this->projetoDAO->listarAtendidosDaTurma($turma_id);
+            echo json_encode(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarTurmasAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $projeto_id = filter_input(INPUT_GET, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$projeto_id || $projeto_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
+                return;
+            }
+
+            $turmas = $this->projetoDAO->listarTurmasProjeto($projeto_id);
+
+            echo json_encode(['success' => true, 'data' => $turmas]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function listarUmaTurmaAjax()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $id_turma = filter_input(INPUT_GET, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $turma = $this->projetoDAO->listarUmaTurma($id_turma);
+
+            if (!$turma) {
+                echo json_encode(['success' => false, 'message' => 'Turma não encontrada']);
+                return;
+            }
+
+            echo json_encode(['success' => true, 'data' => $turma]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function editarTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma   = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $projeto_id = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $nome       = trim(filter_var($_POST['nome'] ?? '', FILTER_SANITIZE_SPECIAL_CHARS));
+            $descricao  = trim(filter_var($_POST['descricao'] ?? '', FILTER_SANITIZE_SPECIAL_CHARS));
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            if (!$projeto_id || $projeto_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
+                return;
+            }
+
+            if (empty($nome)) {
+                echo json_encode(['success' => false, 'message' => 'Nome da turma não informado']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->editarTurma($id_turma, $projeto_id, $nome, $descricao !== '' ? $descricao : null);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function adicionarTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $projeto_id = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+            $nome       = trim(filter_var($_POST['nome'] ?? '', FILTER_SANITIZE_SPECIAL_CHARS));
+            $descricao  = trim(filter_var($_POST['descricao'] ?? '', FILTER_SANITIZE_SPECIAL_CHARS));
+
+            if (!$projeto_id || $projeto_id < 1) {
+                echo json_encode(['success' => false, 'message' => 'Projeto inválido']);
+                return;
+            }
+
+            if (empty($nome)) {
+                echo json_encode(['success' => false, 'message' => 'Nome da turma não informado']);
+                return;
+            }
+
+            $id_turma = $this->projetoDAO->adicionarTurma($projeto_id, $nome, $descricao !== '' ? $descricao : null);
+
+            echo json_encode(['success' => true, 'id_turma' => $id_turma]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function removerTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma   = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $projeto_id = filter_input(INPUT_POST, 'projeto_id', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->removerTurma($id_turma, $projeto_id);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function adicionarExecutanteTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma  = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $id_pessoa = filter_input(INPUT_POST, 'id_pessoa', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            if (!$id_pessoa || $id_pessoa < 1) {
+                echo json_encode(['success' => false, 'message' => 'Executante inválido']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->adicionarExecutanteTurma($id_turma, $id_pessoa);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function removerExecutanteTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma  = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $id_pessoa = filter_input(INPUT_POST, 'id_pessoa', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->removerExecutanteTurma($id_turma, $id_pessoa);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function adicionarAtendidoTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma    = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $id_atendido = filter_input(INPUT_POST, 'id_atendido', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            if (!$id_atendido || $id_atendido < 1) {
+                echo json_encode(['success' => false, 'message' => 'Atendido inválido']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->adicionarAtendidoTurma($id_turma, $id_atendido);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
+        }
+    }
+
+    public function removerAtendidoTurma()
+    {
+        try {
+            header('Content-Type: application/json');
+
+            $csrf_token = $_POST['csrf_token'] ?? null;
+            if (!Csrf::validateToken($csrf_token)) {
+                echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+                return;
+            }
+
+            $id_turma    = filter_input(INPUT_POST, 'id_turma', FILTER_SANITIZE_NUMBER_INT);
+            $id_atendido = filter_input(INPUT_POST, 'id_atendido', FILTER_SANITIZE_NUMBER_INT);
+
+            if (!$id_turma || $id_turma < 1) {
+                echo json_encode(['success' => false, 'message' => 'Turma inválida']);
+                return;
+            }
+
+            $resultado = $this->projetoDAO->removerAtendidoTurma($id_turma, $id_atendido);
+
+            echo json_encode(['success' => $resultado]);
+        } catch (Exception $e) {
+            $this->logErro($e);
+            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro interno. Tente novamente.']);
         }
     }
 }
